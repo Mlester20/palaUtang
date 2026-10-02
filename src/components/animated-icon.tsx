@@ -1,146 +1,90 @@
 import { Image } from 'expo-image';
 import * as SplashScreen from 'expo-splash-screen';
-import { useState } from 'react';
-import { Dimensions, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import Animated, { Easing, Keyframe } from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
 
-const INITIAL_SCALE_FACTOR = Dimensions.get('screen').height / 90;
 const DURATION = 600;
+// Never keep the splash up longer than this, even if the image never reports it was drawn.
+const MAX_SPLASH_MS = 2000;
+
+const splashKeyframe = new Keyframe({
+  0: {
+    transform: [{ scale: 1 }],
+    opacity: 1,
+  },
+  20: {
+    opacity: 1,
+  },
+  70: {
+    opacity: 0,
+    easing: Easing.elastic(0.7),
+  },
+  100: {
+    opacity: 0,
+    transform: [{ scale: 1 }],
+    easing: Easing.elastic(0.7),
+  },
+});
 
 export function AnimatedSplashOverlay() {
   const [animate, setAnimate] = useState(false);
   const [visible, setVisible] = useState(true);
+  const started = useRef(false);
+
+  // Hides the native splash and starts the fade-out. Safe to call more than once.
+  const start = () => {
+    if (started.current) return;
+    started.current = true;
+    SplashScreen.hideAsync()
+      .catch(() => {})
+      .finally(() => setAnimate(true));
+  };
+
+  // Fallback in case the image never fires onDisplay/onError.
+  useEffect(() => {
+    const timer = setTimeout(start, MAX_SPLASH_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Remove the overlay on a JS timer instead of relying only on the animation callback,
+  // which doesn't fire if the animation is skipped (e.g. animations turned off on the phone).
+  useEffect(() => {
+    if (!animate) return;
+    const timer = setTimeout(() => setVisible(false), DURATION + 100);
+    return () => clearTimeout(timer);
+  }, [animate]);
 
   if (!visible) return null;
 
-  const splashKeyframe = new Keyframe({
-    0: {
-      transform: [{ scale: 1 }],
-      opacity: 1,
-    },
-    20: {
-      opacity: 1,
-    },
-    70: {
-      opacity: 0,
-      easing: Easing.elastic(0.7),
-    },
-    100: {
-      opacity: 0,
-      transform: [{ scale: 1 }],
-      easing: Easing.elastic(0.7),
-    },
-  });
-
-  const image = <Image style={styles.image} source={require('@/assets/images/expo-logo.png')} />;
+  // Full-screen splash art; `cover` fills any screen ratio by cropping the edges.
+  // The native splash stays up until this image is drawn, so there's no blank flash.
+  const image = (
+    <Image
+      style={StyleSheet.absoluteFill}
+      source={require('@/assets/images/splash-screen.jpg')}
+      contentFit="cover"
+      onDisplay={start}
+      onError={start}
+    />
+  );
 
   return animate ? (
     <Animated.View
-      entering={splashKeyframe.duration(DURATION).withCallback((finished) => {
-        'worklet';
-        if (finished) {
-          scheduleOnRN(setVisible, false);
-        }
-      })}
+      entering={splashKeyframe.duration(DURATION)}
+      pointerEvents="none"
       style={styles.splashOverlay}>
       {image}
     </Animated.View>
   ) : (
-    <View
-      onLayout={() => {
-        SplashScreen.hideAsync().finally(() => {
-          setAnimate(true);
-        });
-      }}
-      style={styles.splashOverlay}>
-      {image}
-    </View>
-  );
-}
-
-const keyframe = new Keyframe({
-  0: {
-    transform: [{ scale: INITIAL_SCALE_FACTOR }],
-  },
-  100: {
-    transform: [{ scale: 1 }],
-    easing: Easing.elastic(0.7),
-  },
-});
-
-const logoKeyframe = new Keyframe({
-  0: {
-    transform: [{ scale: 1.3 }],
-    opacity: 0,
-  },
-  40: {
-    transform: [{ scale: 1.3 }],
-    opacity: 0,
-    easing: Easing.elastic(0.7),
-  },
-  100: {
-    opacity: 1,
-    transform: [{ scale: 1 }],
-    easing: Easing.elastic(0.7),
-  },
-});
-
-const glowKeyframe = new Keyframe({
-  0: {
-    transform: [{ rotateZ: '0deg' }],
-  },
-  100: {
-    transform: [{ rotateZ: '7200deg' }],
-  },
-});
-
-export function AnimatedIcon() {
-  return (
-    <View style={styles.iconContainer}>
-      <Animated.View entering={glowKeyframe.duration(60 * 1000 * 4)} style={styles.glow}>
-        <Image style={styles.glow} source={require('@/assets/images/logo-glow.png')} />
-      </Animated.View>
-
-      <Animated.View entering={keyframe.duration(DURATION)} style={styles.background} />
-      <Animated.View style={styles.imageContainer} entering={logoKeyframe.duration(DURATION)}>
-        <Image style={styles.image} source={require('@/assets/images/expo-logo.png')} />
-      </Animated.View>
-    </View>
+    <View style={styles.splashOverlay}>{image}</View>
   );
 }
 
 const styles = StyleSheet.create({
-  imageContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  glow: {
-    width: 201,
-    height: 201,
-    position: 'absolute',
-  },
-  iconContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 128,
-    height: 128,
-    zIndex: 100,
-  },
-  image: {
-    width: 76,
-    height: 71,
-  },
-  background: {
-    borderRadius: 40,
-    experimental_backgroundImage: `linear-gradient(180deg, #3C9FFE, #0274DF)`,
-    width: 128,
-    height: 128,
-    position: 'absolute',
-  },
   splashOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: '#208AEF',
+    backgroundColor: '#FAFBFB',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,
