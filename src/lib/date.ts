@@ -28,3 +28,10 @@ export function mondayFirstDayIndex(date: Date): number {
 export function formatFullDate(date: Date): string {
   return `${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
 }
+
+/** "3:05 PM" from a Date, using the phone's local time. */
+export function formatTime(date: Date): string {
+  const h = date.getHours();
+  const m = String(date.getMinutes()).padStart(2, '0');
+  return `${h % 12 === 0 ? 12 : h % 12}:${m} ${h < 12 ? 'AM' : 'PM'}`;
+}

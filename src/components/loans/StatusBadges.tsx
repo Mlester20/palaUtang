@@ -1,6 +1,7 @@
 import { Text, View } from 'react-native';
 
-import type { InstallmentStatus, LoanStatus } from '@/types/loan';
+import { t } from '@/i18n';
+import type { InstallmentStatus, LoanStatus, PaymentType } from '@/types/loan';
 
 type BadgeStyle = { label: string; box: string; text: string };
 
@@ -43,6 +44,11 @@ const INSTALLMENT_STATUS: Record<InstallmentStatus, BadgeStyle> = {
     box: 'rounded-full bg-red-100 px-2.5 py-0.5 dark:bg-red-950',
     text: 'text-xs font-bold text-red-700 dark:text-red-300',
   },
+  skipped: {
+    label: t('payments.chipSkipped'),
+    box: 'rounded-full border border-dashed border-slate-300 px-2.5 py-0.5 dark:border-slate-600',
+    text: 'text-xs font-bold text-slate-400 dark:text-slate-500',
+  },
 };
 
 function Badge({ style }: { style: BadgeStyle }) {
@@ -57,6 +63,30 @@ export function LoanStatusBadge({ status }: { status: LoanStatus }) {
   return <Badge style={LOAN_STATUS[status]} />;
 }
 
-export function InstallmentStatusChip({ status }: { status: InstallmentStatus }) {
-  return <Badge style={INSTALLMENT_STATUS[status]} />;
+/** Lump-sum loans show a past-due balance as "Overdue" (no balda/make-up for them). */
+export function InstallmentStatusChip({
+  status,
+  paymentType = 'daily',
+}: {
+  status: InstallmentStatus;
+  paymentType?: PaymentType;
+}) {
+  const style =
+    status === 'missed' && paymentType === 'lump_sum'
+      ? { ...INSTALLMENT_STATUS.missed, label: t('payments.chipOverdue') }
+      : INSTALLMENT_STATUS[status];
+  return <Badge style={style} />;
+}
+
+/** Small marker for installments paid before their due date. */
+export function AdvanceMarker() {
+  return (
+    <Badge
+      style={{
+        label: t('payments.advance'),
+        box: 'rounded-full bg-sky-100 px-2.5 py-0.5 dark:bg-sky-950',
+        text: 'text-xs font-bold text-sky-800 dark:text-sky-200',
+      }}
+    />
+  );
 }

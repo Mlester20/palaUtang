@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "palautang",
-    "slug": "palautang",
+    "name": "Palautang",
+    "slug": "Palautang",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "palautang",
+    "scheme": "Palautang",
     "userInterfaceStyle": "automatic",
     "android": {
       "adaptiveIcon": {
@@ -36,7 +36,8 @@
         {
           "faceIDPermission": "Allow PeraHiram to use Face ID to unlock the app and protect your lending records."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true,

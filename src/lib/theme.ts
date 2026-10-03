@@ -32,3 +32,14 @@ export type ThemeColors = (typeof palette)['light'];
 export function useThemeColors(): ThemeColors {
   return palette[useColorScheme() === 'dark' ? 'dark' : 'light'];
 }
+
+/**
+ * Font families, loaded with useFonts in the root layout. Use these names via `fontFamily`
+ * (not fontWeight: each Poppins weight is its own family on Android).
+ * If loading fails, React Native falls back to the system font for unknown families.
+ */
+export const fonts = {
+  regular: 'Poppins_400Regular',
+  semibold: 'Poppins_600SemiBold',
+  bold: 'Poppins_700Bold',
+} as const;

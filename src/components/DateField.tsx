@@ -10,16 +10,21 @@ type DateFieldProps = {
   /** 'YYYY-MM-DD' */
   value: string;
   onChange: (ymd: string) => void;
+  /** Earliest / latest selectable 'YYYY-MM-DD' (optional). */
+  minDate?: string;
+  maxDate?: string;
 };
 
 /** Date input that keeps values as local 'YYYY-MM-DD' strings (no UTC conversion). */
-export function DateField({ label, value, onChange }: DateFieldProps) {
+export function DateField({ label, value, onChange, minDate, maxDate }: DateFieldProps) {
   const colors = useThemeColors();
 
   const openAndroid = () =>
     DateTimePickerAndroid.open({
       value: parseYmd(value),
       mode: 'date',
+      minimumDate: minDate ? parseYmd(minDate) : undefined,
+      maximumDate: maxDate ? parseYmd(maxDate) : undefined,
       onChange: (event, date) => {
         if (event.type === 'set' && date) onChange(toYmd(date));
       },
@@ -34,6 +39,8 @@ export function DateField({ label, value, onChange }: DateFieldProps) {
             value={parseYmd(value)}
             mode="date"
             display="compact"
+            minimumDate={minDate ? parseYmd(minDate) : undefined}
+            maximumDate={maxDate ? parseYmd(maxDate) : undefined}
             onChange={(_, date) => date && onChange(toYmd(date))}
           />
         </View>

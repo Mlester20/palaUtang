@@ -1,9 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
-import type { ComponentProps } from 'react';
-import type { ColorValue } from 'react-native';
+import { useSQLiteContext } from 'expo-sqlite';
+import { useEffect, type ComponentProps } from 'react';
+import { AppState, type ColorValue } from 'react-native';
 
 import { useThemeColors } from '@/lib/theme';
+import { refreshCollectionBadge, useCollectionBadge } from '@/store/collection-badge';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -24,9 +26,22 @@ function tabIcon(name: IconName, outline: IconName) {
 
 export default function TabsLayout() {
   const colors = useThemeColors();
+  const db = useSQLiteContext();
+  const toCollect = useCollectionBadge();
+
+  // Badge = loans still to collect today. Refreshed on mount, on every tab focus (e.g. after
+  // recording a payment elsewhere) and when the app returns to the foreground.
+  useEffect(() => {
+    refreshCollectionBadge(db);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshCollectionBadge(db);
+    });
+    return () => subscription.remove();
+  }, [db]);
 
   return (
     <Tabs
+      screenListeners={{ focus: () => refreshCollectionBadge(db) }}
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
@@ -44,7 +59,11 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="collection"
-        options={{ title: 'Collection', tabBarIcon: tabIcon('cash', 'cash-outline') }}
+        options={{
+          title: 'Collection',
+          tabBarIcon: tabIcon('cash', 'cash-outline'),
+          tabBarBadge: toCollect > 0 ? toCollect : undefined,
+        }}
       />
       <Tabs.Screen
         name="borrowers"

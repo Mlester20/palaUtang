@@ -1,5 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { exclusiveWork } from './transaction';
+
 export const DATABASE_NAME = 'perahiram.db';
 
 /**
@@ -66,6 +68,65 @@ const MIGRATIONS: string[] = [
   CREATE INDEX idx_installments_loan_id ON installments (loan_id);
   CREATE INDEX idx_installments_due_date ON installments (due_date);
   `,
+
+  // v3: payments + allocations, and installments gain 'skipped' status and make-up columns.
+  // SQLite can't change a CHECK constraint, so installments is rebuilt (create, copy, drop,
+  // rename). Nothing references installments yet, so dropping the old table is safe.
+  `
+  CREATE TABLE installments_v3 (
+    id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+    loan_id                   INTEGER NOT NULL REFERENCES loans (id) ON DELETE CASCADE,
+    installment_number        INTEGER NOT NULL CHECK (installment_number >= 1),
+    due_date                  TEXT NOT NULL,
+    original_due_date         TEXT NOT NULL,
+    amount_due                INTEGER NOT NULL CHECK (amount_due >= 0),
+    amount_paid               INTEGER NOT NULL DEFAULT 0 CHECK (amount_paid >= 0),
+    status                    TEXT NOT NULL DEFAULT 'pending'
+                                CHECK (status IN ('pending', 'paid', 'partial', 'missed', 'skipped')),
+    is_makeup                 INTEGER NOT NULL DEFAULT 0 CHECK (is_makeup IN (0, 1)),
+    makeup_for_installment_id INTEGER REFERENCES installments (id) ON DELETE CASCADE,
+    created_at                TEXT NOT NULL,
+    UNIQUE (loan_id, installment_number),
+    CHECK ((is_makeup = 1) = (makeup_for_installment_id IS NOT NULL))
+  );
+  INSERT INTO installments_v3 (id, loan_id, installment_number, due_date, original_due_date,
+                               amount_due, amount_paid, status, created_at)
+    SELECT id, loan_id, installment_number, due_date, original_due_date,
+           amount_due, amount_paid, status, created_at
+    FROM installments;
+  DROP TABLE installments;
+  ALTER TABLE installments_v3 RENAME TO installments;
+  CREATE INDEX idx_installments_loan_id ON installments (loan_id);
+  CREATE INDEX idx_installments_due_date ON installments (due_date);
+  CREATE INDEX idx_installments_makeup_for ON installments (makeup_for_installment_id);
+
+  -- Payments are never deleted: mistakes are voided (status + reason).
+  CREATE TABLE payments (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    loan_id     INTEGER NOT NULL REFERENCES loans (id) ON DELETE RESTRICT,
+    amount      INTEGER NOT NULL CHECK (amount > 0),
+    paid_on     TEXT NOT NULL,
+    note        TEXT,
+    status      TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'voided')),
+    voided_at   TEXT,
+    void_reason TEXT,
+    created_at  TEXT NOT NULL,
+    CHECK ((status = 'voided') = (voided_at IS NOT NULL))
+  );
+  CREATE INDEX idx_payments_loan_id ON payments (loan_id);
+  CREATE INDEX idx_payments_status ON payments (status);
+
+  -- Which installments each active payment covers. Derived: rebuilt by recomputeLoan.
+  CREATE TABLE payment_allocations (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    payment_id     INTEGER NOT NULL REFERENCES payments (id) ON DELETE RESTRICT,
+    installment_id INTEGER NOT NULL REFERENCES installments (id) ON DELETE RESTRICT,
+    amount         INTEGER NOT NULL CHECK (amount > 0),
+    UNIQUE (payment_id, installment_id)
+  );
+  CREATE INDEX idx_payment_allocations_payment_id ON payment_allocations (payment_id);
+  CREATE INDEX idx_payment_allocations_installment_id ON payment_allocations (installment_id);
+  `,
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;
@@ -91,7 +152,12 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
  * Deletes every app table and recreates an empty schema (used by Settings → Reset app).
  * Drops all user tables, not just borrowers, so it keeps working as later phases add tables.
  */
-export async function resetDatabase(db: SQLiteDatabase) {
+export function resetDatabase(db: SQLiteDatabase) {
+  // Queued so it can't interleave with a background reconcile or a save.
+  return exclusiveWork(() => dropAllAndMigrate(db));
+}
+
+async function dropAllAndMigrate(db: SQLiteDatabase) {
   const tables = await db.getAllAsync<{ name: string }>(
     "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
   );

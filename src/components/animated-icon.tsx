@@ -27,9 +27,14 @@ const splashKeyframe = new Keyframe({
   },
 });
 
-export function AnimatedSplashOverlay() {
+/**
+ * `ready` = the app can be shown (fonts loaded or failed). The splash stays up until the splash
+ * image is drawn AND the app is ready, so text never flashes in the default font.
+ */
+export function AnimatedSplashOverlay({ ready = true }: { ready?: boolean }) {
   const [animate, setAnimate] = useState(false);
   const [visible, setVisible] = useState(true);
+  const [imageShown, setImageShown] = useState(false);
   const started = useRef(false);
 
   // Hides the native splash and starts the fade-out. Safe to call more than once.
@@ -43,7 +48,17 @@ export function AnimatedSplashOverlay() {
 
   // Fallback in case the image never fires onDisplay/onError.
   useEffect(() => {
-    const timer = setTimeout(start, MAX_SPLASH_MS);
+    const timer = setTimeout(() => setImageShown(true), MAX_SPLASH_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (ready && imageShown) start();
+  }, [ready, imageShown]);
+
+  // Never keep the user waiting forever, even if `ready` never arrives.
+  useEffect(() => {
+    const timer = setTimeout(start, MAX_SPLASH_MS * 3);
     return () => clearTimeout(timer);
   }, []);
 
@@ -64,8 +79,8 @@ export function AnimatedSplashOverlay() {
       style={StyleSheet.absoluteFill}
       source={require('@/assets/images/splash-screen.jpg')}
       contentFit="cover"
-      onDisplay={start}
-      onError={start}
+      onDisplay={() => setImageShown(true)}
+      onError={() => setImageShown(true)}
     />
   );
 

@@ -10,6 +10,8 @@ import type {
   PaymentType,
 } from '@/types/loan';
 
+import { writeTransaction } from './transaction';
+
 type LoanRow = {
   id: number;
   borrower_id: number;
@@ -45,6 +47,8 @@ type InstallmentRow = {
   amount_due: number;
   amount_paid: number;
   status: InstallmentStatus;
+  is_makeup: number;
+  makeup_for_installment_id: number | null;
   created_at: string;
 };
 
@@ -89,17 +93,23 @@ function toInstallment(row: InstallmentRow): Installment {
     amountDue: row.amount_due,
     amountPaid: row.amount_paid,
     status: row.status,
+    isMakeup: row.is_makeup === 1,
+    makeupForInstallmentId: row.makeup_for_installment_id,
     createdAt: row.created_at,
   };
 }
 
-/** Loan + borrower name + schedule progress, aggregated from installments. */
+/**
+ * Loan + borrower name + progress. Counts use regular installments only (make-up days are extra
+ * collection days, not extra installments); amount paid comes from active payments.
+ */
 const SUMMARY_SELECT = `
   SELECT l.*,
          b.full_name AS borrower_name,
-         COUNT(i.id) AS total_count,
-         COALESCE(SUM(i.status = 'paid'), 0) AS paid_count,
-         COALESCE(SUM(i.amount_paid), 0) AS amount_paid
+         COALESCE(SUM(i.is_makeup = 0), 0) AS total_count,
+         COALESCE(SUM(i.is_makeup = 0 AND i.status = 'paid'), 0) AS paid_count,
+         (SELECT COALESCE(SUM(p.amount), 0) FROM payments p
+          WHERE p.loan_id = l.id AND p.status = 'active') AS amount_paid
   FROM loans l
   JOIN borrowers b ON b.id = l.borrower_id
   LEFT JOIN installments i ON i.loan_id = l.id`;
@@ -123,8 +133,8 @@ export async function createLoanWithSchedule(
   const now = new Date().toISOString();
   let loanId = 0;
 
-  // Runs on the main connection, where foreign_keys = ON is enforced (borrower must exist).
-  await db.withTransactionAsync(async () => {
+  // Main connection (foreign_keys = ON: the borrower must exist), queued behind other writes.
+  await writeTransaction(db, async () => {
     const result = await db.runAsync(
       `INSERT INTO loans (
          borrower_id, principal, interest_rate, interest_amount, total_payable, payment_type,
@@ -205,17 +215,17 @@ export async function getInstallmentsByLoan(
   loanId: number,
 ): Promise<Installment[]> {
   const rows = await db.getAllAsync<InstallmentRow>(
-    'SELECT * FROM installments WHERE loan_id = ? ORDER BY installment_number',
+    'SELECT * FROM installments WHERE loan_id = ? ORDER BY due_date, installment_number',
     [loanId],
   );
   return rows.map(toInstallment);
 }
 
-/** A loan can be cancelled only while it is active and nothing has been paid on it. */
+/** A loan can be cancelled only while it is active and has no active (non-voided) payment. */
 export async function canCancelLoan(db: SQLiteDatabase, id: number): Promise<boolean> {
   const row = await db.getFirstAsync<{ ok: number }>(
     `SELECT (l.status = 'active'
-             AND NOT EXISTS (SELECT 1 FROM installments WHERE loan_id = l.id AND amount_paid > 0)
+             AND NOT EXISTS (SELECT 1 FROM payments WHERE loan_id = l.id AND status = 'active')
             ) AS ok
      FROM loans l WHERE l.id = ?`,
     [id],
@@ -226,11 +236,13 @@ export async function canCancelLoan(db: SQLiteDatabase, id: number): Promise<boo
 /** Marks the loan cancelled (its schedule is kept for the record). Throws if not allowed. */
 export async function cancelLoan(db: SQLiteDatabase, id: number) {
   // The guard lives in the UPDATE itself, so it can't race with a payment being recorded.
-  const result = await db.runAsync(
-    `UPDATE loans SET status = 'cancelled', updated_at = ?
-     WHERE id = ? AND status = 'active'
-       AND NOT EXISTS (SELECT 1 FROM installments WHERE loan_id = ? AND amount_paid > 0)`,
-    [new Date().toISOString(), id, id],
+  const result = await writeTransaction(db, () =>
+    db.runAsync(
+      `UPDATE loans SET status = 'cancelled', updated_at = ?
+       WHERE id = ? AND status = 'active'
+         AND NOT EXISTS (SELECT 1 FROM payments WHERE loan_id = ? AND status = 'active')`,
+      [new Date().toISOString(), id, id],
+    ),
   );
   if (result.changes === 0) {
     throw new Error('This loan can no longer be cancelled (it is not active or has payments).');

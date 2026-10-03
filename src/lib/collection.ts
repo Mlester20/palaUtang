@@ -1,0 +1,190 @@
+/**
+ * Pure collection-day logic: no database, no React. Money = integer centavos, dates = local
+ * 'YYYY-MM-DD'. Rows come from getCollectionList (src/db/collection.ts), which reads the
+ * installment cache kept by recomputeLoan; amounts use REGULAR installments only (make-up rows
+ * are extra collection days for money already counted as overdue, so they'd double count).
+ *
+ * Definitions:
+ *  - due today   = outstanding on regular installments with due_date = today
+ *  - overdue     = outstanding on regular installments with due_date < today
+ *  - to collect  = due today + overdue (per loan)
+ *  - collected   = active payments with paid_on = today (incl. overdue recovery and advance)
+ *  - remaining   = sum of "to collect" over active loans
+ *  - progress    = collected ÷ (collected + remaining); null when both are 0 (empty state)
+ *
+ * Worked examples (₱150/day loans; today = T):
+ *  A. Three loans with ₱150 due on T, nothing paid → 3 'due_today' rows; remaining ₱450,
+ *     collected ₱0, progress 0%.
+ *  B. Collect ₱150 on one → its row is 'paid_today' (Paid section); collected ₱150,
+ *     remaining ₱300, progress 150 ÷ 450 = 33%. Undo voids it → back to A.
+ *  C. Two balda days + today → 'overdue', to collect ₱450 ("₱150 today + ₱300 overdue (2 days)");
+ *     collecting ₱450 fills the two missed days first, then today (oldest-first in Phase 6).
+ *  D. Today's installment was paid yesterday (advance) → due today ₱0 outstanding and the
+ *     covering payment is dated before T → 'paid_in_advance' (Paid section, not To Collect).
+ *  E. Lump sum due on T → 'due_today'; another lump sum past due → 'overdue' with days overdue
+ *     from its due date (no make-up rows exist for lump sums).
+ *  F. Sunday + skip_sundays: the schedule has no regular row on Sunday, so nothing is due
+ *     today; any overdue amount still makes it an 'overdue' row.
+ *  G. A payment that completes a loan → the loan is 'completed', has nothing to collect, but
+ *     its payment today keeps it in the Paid section (and in the Collected list).
+ */
+
+import { daysBetween, type PaymentType } from './loan';
+
+/** One loan's collection numbers for a given day (from getCollectionList). */
+export interface CollectionRow {
+  loanId: number;
+  borrowerId: number;
+  borrowerName: string;
+  nickname: string | null;
+  phone: string | null;
+  paymentType: PaymentType;
+  loanStatus: 'active' | 'completed' | 'cancelled';
+  /** Regular installment amount (daily hulog, or the lump sum). */
+  installmentAmount: number;
+  /** Full amount of today's regular installment(s), paid or not. */
+  dueTodayAmount: number;
+  dueTodayOutstanding: number;
+  overdueOutstanding: number;
+  /** Daily: fully missed past-due days. */
+  baldaDays: number;
+  /** Oldest past-due date with money still owed (null if nothing overdue). */
+  oldestOverdueDate: string | null;
+  /** Active payments on this loan dated today. */
+  collectedToday: number;
+  /** Latest paid_on among active payments covering today's installment (null if none). */
+  todayCoveredLastPaidOn: string | null;
+}
+
+export type CollectionStatus =
+  'overdue' | 'due_today' | 'partial' | 'paid_today' | 'paid_in_advance';
+
+export interface ClassifiedRow extends CollectionRow {
+  status: CollectionStatus;
+  toCollect: number;
+  /** Lump sum: days since the oldest unpaid due date (0 if not overdue). */
+  daysOverdue: number;
+}
+
+export function classifyRow(row: CollectionRow, today: string): ClassifiedRow {
+  const toCollect =
+    row.loanStatus === 'active' ? row.dueTodayOutstanding + row.overdueOutstanding : 0;
+  const daysOverdue = row.oldestOverdueDate ? daysBetween(row.oldestOverdueDate, today) : 0;
+
+  let status: CollectionStatus;
+  if (toCollect > 0 && row.overdueOutstanding > 0) status = 'overdue';
+  else if (toCollect > 0)
+    status = row.dueTodayOutstanding < row.dueTodayAmount ? 'partial' : 'due_today';
+  else if (
+    row.dueTodayAmount > 0 &&
+    row.todayCoveredLastPaidOn !== null &&
+    row.todayCoveredLastPaidOn < today &&
+    row.collectedToday === 0
+  )
+    status = 'paid_in_advance';
+  else status = 'paid_today';
+
+  return { ...row, status, toCollect, daysOverdue };
+}
+
+export type CollectionFilter = 'all' | 'overdue' | 'daily' | 'lump_sum';
+
+export function matchesFilter(row: ClassifiedRow, filter: CollectionFilter): boolean {
+  switch (filter) {
+    case 'overdue':
+      return row.status === 'overdue';
+    case 'daily':
+      return row.paymentType === 'daily';
+    case 'lump_sum':
+      return row.paymentType === 'lump_sum';
+    default:
+      return true;
+  }
+}
+
+/** Case-insensitive match on name, nickname, or phone (digits only for phone). */
+export function matchesSearch(row: CollectionRow, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const digits = q.replace(/\D/g, '');
+  return (
+    row.borrowerName.toLowerCase().includes(q) ||
+    (row.nickname?.toLowerCase().includes(q) ?? false) ||
+    (digits.length > 0 && (row.phone?.replace(/\D/g, '').includes(digits) ?? false))
+  );
+}
+
+export interface CollectionSections {
+  /** Most overdue first. */
+  overdue: ClassifiedRow[];
+  /** Due today + partial, A–Z. */
+  dueToday: ClassifiedRow[];
+  /** Paid today or in advance, A–Z. */
+  paid: ClassifiedRow[];
+}
+
+const byName = (a: ClassifiedRow, b: ClassifiedRow) =>
+  a.borrowerName.localeCompare(b.borrowerName) || a.loanId - b.loanId;
+
+export function groupCollection(
+  rows: ClassifiedRow[],
+  filter: CollectionFilter = 'all',
+  search = '',
+): CollectionSections {
+  const visible = rows.filter((r) => matchesFilter(r, filter) && matchesSearch(r, search));
+  return {
+    overdue: visible
+      .filter((r) => r.status === 'overdue')
+      .sort(
+        (a, b) =>
+          (a.oldestOverdueDate ?? '').localeCompare(b.oldestOverdueDate ?? '') ||
+          b.overdueOutstanding - a.overdueOutstanding ||
+          byName(a, b),
+      ),
+    dueToday: visible
+      .filter((r) => r.status === 'due_today' || r.status === 'partial')
+      .sort(byName),
+    paid: visible
+      .filter((r) => r.status === 'paid_today' || r.status === 'paid_in_advance')
+      .sort(byName),
+  };
+}
+
+export interface CollectionSummary {
+  /** Regular installments due today on active loans (full amounts). */
+  expectedToday: number;
+  collectedToday: number;
+  remaining: number;
+  /** 0–1, or null when there is nothing collected and nothing remaining. */
+  progress: number | null;
+  /** Loans still to collect today (also the tab badge). */
+  toCollectCount: number;
+  paidCount: number;
+  /** toCollectCount + paidCount */
+  totalCount: number;
+}
+
+export function summarizeCollection(rows: ClassifiedRow[]): CollectionSummary {
+  let expectedToday = 0;
+  let collectedToday = 0;
+  let remaining = 0;
+  let toCollectCount = 0;
+  let paidCount = 0;
+  for (const r of rows) {
+    if (r.loanStatus === 'active') expectedToday += r.dueTodayAmount;
+    collectedToday += r.collectedToday;
+    remaining += r.toCollect;
+    if (r.toCollect > 0) toCollectCount++;
+    else paidCount++;
+  }
+  const denominator = collectedToday + remaining;
+  return {
+    expectedToday,
+    collectedToday,
+    remaining,
+    progress: denominator > 0 ? collectedToday / denominator : null,
+    toCollectCount,
+    paidCount,
+    totalCount: toCollectCount + paidCount,
+  };
+}

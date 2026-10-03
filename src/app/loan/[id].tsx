@@ -5,9 +5,21 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, SectionList, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { InstallmentStatusChip, LoanStatusBadge } from '@/components/loans/StatusBadges';
+import {
+  AdvanceMarker,
+  InstallmentStatusChip,
+  LoanStatusBadge,
+} from '@/components/loans/StatusBadges';
 import { ProgressBar } from '@/components/loans/ProgressBar';
+import { VoidPaymentModal } from '@/components/payments/VoidPaymentModal';
 import { canCancelLoan, cancelLoan, getInstallmentsByLoan, getLoanById } from '@/db/loans';
+import {
+  getLoanBalanceSummary,
+  getPaymentsByLoan,
+  recomputeLoan,
+  voidPayment,
+} from '@/db/payments';
+import { t } from '@/i18n';
 import { showError } from '@/lib/errors';
 import {
   assessProfit,
@@ -15,12 +27,20 @@ import {
   formatMonthYear,
   formatPercent,
   formatShortDate,
+  todayYmd,
 } from '@/lib/loan';
 import { formatPeso } from '@/lib/money';
 import { useThemeColors } from '@/lib/theme';
-import type { Installment, LoanSummary } from '@/types/loan';
+import type { LoanBalanceSummary } from '@/lib/payments';
+import type { Installment, LoanSummary, Payment } from '@/types/loan';
 
-type LoadedLoan = { loan: LoanSummary; installments: Installment[]; canCancel: boolean };
+type LoadedLoan = {
+  loan: LoanSummary;
+  installments: Installment[];
+  canCancel: boolean;
+  payments: Payment[];
+  summary: LoanBalanceSummary;
+};
 
 /** Groups the schedule by month for sticky month headers. */
 function groupByMonth(installments: Installment[]) {
@@ -41,15 +61,21 @@ export default function LoanDetailScreen() {
   const id = Number(useLocalSearchParams<{ id: string }>().id);
   const [data, setData] = useState<LoadedLoan | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
+  const [voiding, setVoiding] = useState<Payment | null>(null);
+  const today = todayYmd();
 
   const load = useCallback(async () => {
-    const [loan, installments, canCancel] = await Promise.all([
+    // Bring balda/make-ups up to today before showing anything (idempotent; usually no writes).
+    await recomputeLoan(db, id, today);
+    const [loan, installments, canCancel, payments, summary] = await Promise.all([
       getLoanById(db, id),
       getInstallmentsByLoan(db, id),
       canCancelLoan(db, id),
+      getPaymentsByLoan(db, id),
+      getLoanBalanceSummary(db, id, today),
     ]);
-    return loan ? { loan, installments, canCancel } : null;
-  }, [db, id]);
+    return loan && summary ? { loan, installments, canCancel, payments, summary } : null;
+  }, [db, id, today]);
 
   useFocusEffect(
     useCallback(() => {
@@ -84,10 +110,27 @@ export default function LoanDetailScreen() {
     );
   }
 
-  const { loan, installments, canCancel } = data;
+  const { loan, installments, canCancel, payments, summary } = data;
   const progress = loan.totalCount > 0 ? loan.paidCount / loan.totalCount : 0;
   const sections = groupByMonth(installments);
-  const profit = assessProfit(loan.principal, loan.totalPayable, loan.startDate, loan.endDate);
+  // Profit per month uses the ORIGINAL schedule length (make-up days don't change the deal).
+  const originalLastDue = installments
+    .filter((i) => !i.isMakeup)
+    .reduce((max, i) => (i.originalDueDate > max ? i.originalDueDate : max), loan.startDate);
+  const profit = assessProfit(loan.principal, loan.totalPayable, loan.startDate, originalLastDue);
+  const numberById = new Map(installments.map((i) => [i.id, i.installmentNumber]));
+
+  const onVoid = async (reason: string) => {
+    if (!voiding) return;
+    try {
+      await voidPayment(db, voiding.id, reason, today);
+      setVoiding(null);
+      setData(await load());
+      Alert.alert(t('payments.voidedTitle'), t('payments.voidedMessage'));
+    } catch (error) {
+      showError(t('payments.voidFailed'), error);
+    }
+  };
 
   const confirmCancel = () => {
     Alert.alert(
@@ -191,15 +234,68 @@ export default function LoanDetailScreen() {
         <ProgressBar value={progress} />
       </View>
 
-      {/* Actions */}
-      <View
-        className="min-h-14 flex-row items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-slate-100 px-4 opacity-70 dark:border-slate-700 dark:bg-slate-900"
-        accessibilityState={{ disabled: true }}>
-        <Ionicons name="cash-outline" size={22} color={colors.textMuted} />
-        <Text className="text-base font-semibold text-slate-500 dark:text-slate-400">
-          Record payment: coming in the next phase
+      {/* Balance (always derived from active payments) */}
+      <View className="gap-3 rounded-2xl bg-white p-5 dark:bg-slate-900">
+        <Text className="text-sm font-bold uppercase text-slate-500 dark:text-slate-400">
+          {t('payments.summaryTitle')}
         </Text>
+        <View className="flex-row gap-3">
+          <Stat label={t('payments.paid')} value={formatPeso(summary.totalPaid)} />
+          <Stat label={t('payments.balance')} value={formatPeso(summary.balance)} strong />
+        </View>
+        <View className="flex-row gap-3">
+          <Stat
+            label={t('payments.overdue')}
+            value={formatPeso(summary.overdueAmount)}
+            danger={summary.overdueAmount > 0}
+          />
+          {loan.paymentType === 'daily' ? (
+            <Stat
+              label={t('payments.baldaDays')}
+              value={String(summary.baldaDays)}
+              danger={summary.baldaDays > 0}
+            />
+          ) : (
+            <Stat
+              label={t('payments.overdue')}
+              value={
+                summary.daysOverdue === 0
+                  ? t('payments.none')
+                  : summary.daysOverdue === 1
+                    ? t('payments.oneDayOverdue')
+                    : t('payments.daysOverdue', { days: summary.daysOverdue })
+              }
+              danger={summary.daysOverdue > 0}
+            />
+          )}
+        </View>
+        <Row
+          label={t('payments.nextDue')}
+          value={
+            summary.balance <= 0
+              ? t('payments.fullyPaid')
+              : summary.nextDue
+                ? t('payments.nextDueValue', {
+                    amount: formatPeso(summary.nextDue.amount),
+                    date: formatShortDate(summary.nextDue.date),
+                  })
+                : t('payments.none')
+          }
+        />
       </View>
+
+      {/* Actions */}
+      {loan.status === 'active' && (
+        <Pressable
+          onPress={() =>
+            router.push({ pathname: '/payment/new', params: { loanId: String(loan.id) } })
+          }
+          accessibilityRole="button"
+          className="min-h-14 flex-row items-center justify-center gap-2 rounded-2xl bg-teal-700 active:bg-teal-800 dark:bg-teal-500">
+          <Ionicons name="cash-outline" size={24} color="#ffffff" />
+          <Text className="text-lg font-bold text-white">{t('payments.recordPayment')}</Text>
+        </Pressable>
+      )}
       {canCancel && (
         <Pressable
           onPress={confirmCancel}
@@ -210,6 +306,64 @@ export default function LoanDetailScreen() {
           <Text className="text-lg font-bold text-red-600 dark:text-red-400">Cancel loan</Text>
         </Pressable>
       )}
+
+      {/* Payment history (voided payments stay, clearly marked) */}
+      <View className="gap-3">
+        <Text className="pt-2 text-xl font-bold text-slate-900 dark:text-white">
+          {t('payments.historyTitle')} ({payments.length})
+        </Text>
+        {payments.length === 0 ? (
+          <Text className="text-base text-slate-500 dark:text-slate-400">
+            {t('payments.noPayments')}
+          </Text>
+        ) : (
+          <View className="rounded-2xl bg-white px-4 dark:bg-slate-900">
+            {payments.map((p, i) => {
+              const voided = p.status === 'voided';
+              return (
+                <View
+                  key={p.id}
+                  className={[
+                    'min-h-16 flex-row items-center gap-3 py-3',
+                    i > 0 ? 'border-t border-slate-100 dark:border-slate-800' : '',
+                  ].join(' ')}>
+                  <View className="flex-1 gap-0.5">
+                    <Text
+                      className={
+                        voided
+                          ? 'text-lg font-bold text-slate-400 line-through dark:text-slate-500'
+                          : 'text-lg font-bold text-slate-900 dark:text-white'
+                      }>
+                      {formatPeso(p.amount)}
+                    </Text>
+                    <Text className="text-sm text-slate-600 dark:text-slate-300">
+                      {formatDisplayDate(p.paidOn)}
+                    </Text>
+                    {p.note && (
+                      <Text className="text-sm text-slate-500 dark:text-slate-400">{p.note}</Text>
+                    )}
+                    {voided && (
+                      <Text className="text-sm font-semibold text-red-600 dark:text-red-400">
+                        {t('payments.voidedReason', { reason: p.voidReason ?? '' })}
+                      </Text>
+                    )}
+                  </View>
+                  {!voided && loan.status !== 'cancelled' && (
+                    <Pressable
+                      onPress={() => setVoiding(p)}
+                      accessibilityRole="button"
+                      className="min-h-12 justify-center rounded-xl border border-red-300 px-4 active:opacity-70 dark:border-red-900">
+                      <Text className="text-base font-bold text-red-600 dark:text-red-400">
+                        {t('payments.void')}
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
+      </View>
 
       <Text className="pt-2 text-xl font-bold text-slate-900 dark:text-white">
         Schedule ({installments.length})
@@ -240,27 +394,94 @@ export default function LoanDetailScreen() {
             </Text>
           </View>
         )}
-        renderItem={({ item, index, section }) => (
-          <View
-            className={[
-              'min-h-14 flex-row items-center gap-3 bg-white px-4 py-3 dark:bg-slate-900',
-              index === 0 ? 'rounded-t-2xl' : 'border-t border-slate-100 dark:border-slate-800',
-              index === section.data.length - 1 ? 'mb-3 rounded-b-2xl' : '',
-            ].join(' ')}>
-            <Text className="w-10 text-base font-bold text-slate-500 dark:text-slate-400">
-              #{item.installmentNumber}
-            </Text>
-            <Text className="flex-1 text-base text-slate-900 dark:text-white">
-              {formatShortDate(item.dueDate)}
-            </Text>
-            <Text className="text-base font-bold text-slate-900 dark:text-white">
-              {formatPeso(item.amountDue)}
-            </Text>
-            <InstallmentStatusChip status={item.status} />
-          </View>
-        )}
+        renderItem={({ item, index, section }) => {
+          const skipped = item.status === 'skipped';
+          return (
+            <View
+              className={[
+                'min-h-14 flex-row items-center gap-3 px-4 py-3',
+                item.isMakeup ? 'bg-amber-50 dark:bg-amber-950' : 'bg-white dark:bg-slate-900',
+                index === 0 ? 'rounded-t-2xl' : 'border-t border-slate-100 dark:border-slate-800',
+                index === section.data.length - 1 ? 'mb-3 rounded-b-2xl' : '',
+                skipped ? 'opacity-50' : '',
+              ].join(' ')}>
+              <Text className="w-10 text-base font-bold text-slate-500 dark:text-slate-400">
+                #{item.installmentNumber}
+              </Text>
+              <View className="flex-1 gap-0.5">
+                <Text className="text-base text-slate-900 dark:text-white">
+                  {formatShortDate(item.dueDate)}
+                </Text>
+                {item.isMakeup && item.makeupForInstallmentId !== null && (
+                  <Text className="text-xs font-semibold text-amber-800 dark:text-amber-200">
+                    {t('payments.makeupFor', {
+                      number: numberById.get(item.makeupForInstallmentId) ?? '?',
+                    })}
+                  </Text>
+                )}
+                {item.amountPaid > 0 && item.amountPaid < item.amountDue && (
+                  <Text className="text-xs text-slate-500 dark:text-slate-400">
+                    {t('payments.paidOf', {
+                      paid: formatPeso(item.amountPaid),
+                      due: formatPeso(item.amountDue),
+                    })}
+                  </Text>
+                )}
+              </View>
+              <Text
+                className={
+                  skipped
+                    ? 'text-base font-bold text-slate-400 line-through dark:text-slate-500'
+                    : 'text-base font-bold text-slate-900 dark:text-white'
+                }>
+                {formatPeso(item.amountDue)}
+              </Text>
+              <View className="items-end gap-1">
+                <InstallmentStatusChip status={item.status} paymentType={loan.paymentType} />
+                {item.status === 'paid' && item.dueDate > today && <AdvanceMarker />}
+              </View>
+            </View>
+          );
+        }}
+      />
+      <VoidPaymentModal
+        visible={voiding !== null}
+        amountText={voiding ? formatPeso(voiding.amount) : ''}
+        dateText={voiding ? formatDisplayDate(voiding.paidOn) : ''}
+        onCancel={() => setVoiding(null)}
+        onConfirm={onVoid}
       />
     </>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  strong,
+  danger,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <View className="flex-1 gap-0.5">
+      <Text className="text-sm text-slate-500 dark:text-slate-400">{label}</Text>
+      <Text
+        className={
+          danger
+            ? 'text-xl font-extrabold text-red-600 dark:text-red-400'
+            : strong
+              ? 'text-xl font-extrabold text-slate-900 dark:text-white'
+              : 'text-xl font-bold text-slate-800 dark:text-slate-100'
+        }
+        numberOfLines={1}
+        adjustsFontSizeToFit>
+        {value}
+      </Text>
+    </View>
   );
 }
 
