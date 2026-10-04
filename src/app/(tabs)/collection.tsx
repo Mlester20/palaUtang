@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 
 import { CollectedDayView } from '@/components/collection/CollectedDayView';
+import { CollectionCashStrip } from '@/components/collection/CollectionCashStrip';
 import { CollectionRowItem } from '@/components/collection/CollectionRowItem';
 import { CollectionSummaryCard } from '@/components/collection/CollectionSummaryCard';
 import { CollectSheet } from '@/components/collection/CollectSheet';
@@ -24,13 +25,20 @@ import { UndoSnackbar } from '@/components/collection/UndoSnackbar';
 import { EmptyState } from '@/components/empty-state';
 import { VoidPaymentModal } from '@/components/payments/VoidPaymentModal';
 import { SegmentedControl } from '@/components/SegmentedControl';
+import { getCashSummary, type CashSummary } from '@/db/cash';
 import {
   countActiveLoans,
   getCollectionList,
   getPaymentsByDate,
   type DatedPayment,
 } from '@/db/collection';
-import { previewPayment, reconcileAllActiveLoans, recordPayment, voidPayment } from '@/db/payments';
+import {
+  previewPayment,
+  reconcileAllActiveLoans,
+  recordPayment,
+  VoidBlockedError,
+  voidPayment,
+} from '@/db/payments';
 import { t, type TranslationKey } from '@/i18n';
 import {
   groupCollection,
@@ -44,6 +52,7 @@ import { formatPeso } from '@/lib/money';
 import type { PaymentPreview } from '@/lib/payments';
 import { useThemeColors } from '@/lib/theme';
 import { setCollectionBadge } from '@/store/collection-badge';
+import { useFlagThresholds } from '@/store/flag-settings';
 
 type Segment = 'collect' | 'collected';
 type SectionKey = 'overdue' | 'dueToday' | 'paid';
@@ -66,6 +75,7 @@ type Snack = { key: number; text: string; canUndo: boolean; paymentId?: number }
 export default function CollectionScreen() {
   const db = useSQLiteContext();
   const colors = useThemeColors();
+  const thresholds = useFlagThresholds();
 
   const [segment, setSegment] = useState<Segment>('collect');
   // `today` is recomputed on every load, so the screen follows midnight while the app stays open.
@@ -73,6 +83,7 @@ export default function CollectionScreen() {
   const [rows, setRows] = useState<ClassifiedRow[] | null>(null);
   const [activeLoans, setActiveLoans] = useState(0);
   const [loadError, setLoadError] = useState(false);
+  const [cash, setCash] = useState<CashSummary | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<CollectionFilter>('all');
@@ -98,11 +109,13 @@ export default function CollectionScreen() {
     const now = todayYmd();
     try {
       await reconcileAllActiveLoans(db, now);
-      const [list, active, payments] = await Promise.all([
+      const [list, active, payments, cashSummary] = await Promise.all([
         getCollectionList(db, now),
         countActiveLoans(db),
         getPaymentsByDate(db, collectedDate ?? now),
+        getCashSummary(db, now),
       ]);
+      setCash(cashSummary);
       setToday(now);
       setRows(list);
       setActiveLoans(active);
@@ -228,7 +241,12 @@ export default function CollectionScreen() {
       await load();
       Alert.alert(t('payments.voidedTitle'), t('payments.voidedMessage'));
     } catch (error) {
-      showError(t('payments.voidFailed'), error);
+      if (error instanceof VoidBlockedError) {
+        setVoiding(null);
+        Alert.alert(t('settlement.voidBlockedTitle'), t(`settlement.${error.rule}`));
+      } else {
+        showError(t('payments.voidFailed'), error);
+      }
     }
   };
 
@@ -257,6 +275,15 @@ export default function CollectionScreen() {
         {formatDisplayDate(today)}
       </Text>
       <CollectionSummaryCard summary={summary} />
+      {cash && (
+        <CollectionCashStrip
+          cashOnHand={cash.cashOnHand}
+          outToday={cash.withdrawalsToday + cash.expensesToday}
+          onWithdraw={() => router.push('/cash/new')}
+          onOpenCash={() => router.push('/cash')}
+          onSetup={() => router.push('/cash/setup')}
+        />
+      )}
       <SegmentedControl
         value={segment}
         onChange={setSegment}
@@ -430,6 +457,8 @@ export default function CollectionScreen() {
               onCollect={onCollect}
               onMore={onMore}
               onOpen={onOpenRow}
+              today={today}
+              thresholds={thresholds}
             />
           )}
         />
@@ -459,6 +488,7 @@ export default function CollectionScreen() {
         visible={voiding !== null}
         amountText={voiding ? formatPeso(voiding.amount) : ''}
         dateText={formatDisplayDate(shownDate)}
+        warning={voiding?.type === 'settlement' ? t('settlement.voidSettlementWarning') : undefined}
         onCancel={() => setVoiding(null)}
         onConfirm={confirmVoid}
       />

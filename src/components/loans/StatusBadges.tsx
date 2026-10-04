@@ -21,6 +21,11 @@ const LOAN_STATUS: Record<LoanStatus, BadgeStyle> = {
     box: 'rounded-full bg-slate-200 px-3 py-1 dark:bg-slate-700',
     text: 'text-sm font-bold text-slate-700 dark:text-slate-200',
   },
+  closed_early: {
+    label: t('settlement.badgeClosedEarly'),
+    box: 'rounded-full bg-violet-100 px-3 py-1 dark:bg-violet-950',
+    text: 'text-sm font-bold text-violet-800 dark:text-violet-200',
+  },
 };
 
 const INSTALLMENT_STATUS: Record<InstallmentStatus, BadgeStyle> = {
@@ -49,7 +54,25 @@ const INSTALLMENT_STATUS: Record<InstallmentStatus, BadgeStyle> = {
     box: 'rounded-full border border-dashed border-slate-300 px-2.5 py-0.5 dark:border-slate-600',
     text: 'text-xs font-bold text-slate-400 dark:text-slate-500',
   },
+  settled: {
+    label: t('settlement.chipSettled'),
+    box: 'rounded-full bg-violet-100 px-2.5 py-0.5 dark:bg-violet-950',
+    text: 'text-xs font-bold text-violet-800 dark:text-violet-200',
+  },
 };
+
+/** Small "Renewed" marker for a loan that was replaced by a renewal. */
+export function RenewedMarker() {
+  return (
+    <Badge
+      style={{
+        label: t('settlement.badgeRenewed'),
+        box: 'rounded-full bg-sky-100 px-3 py-1 dark:bg-sky-950',
+        text: 'text-sm font-bold text-sky-800 dark:text-sky-200',
+      }}
+    />
+  );
+}
 
 function Badge({ style }: { style: BadgeStyle }) {
   return (

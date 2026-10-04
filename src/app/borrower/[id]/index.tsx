@@ -6,6 +6,7 @@ import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Text, View } 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { InitialsAvatar } from '@/components/dashboard';
+import { SeverityBanner } from '@/components/flags/SeverityBanner';
 import { LoanCard } from '@/components/loans/LoanCard';
 import {
   archiveBorrower,
@@ -13,10 +14,14 @@ import {
   getBorrowerById,
   restoreBorrower,
 } from '@/db/borrowers';
+import { getBorrowerFlag } from '@/db/flags';
 import { getLoansByBorrower } from '@/db/loans';
 import { formatFullDate } from '@/lib/date';
 import { showError } from '@/lib/errors';
+import type { BorrowerFlag } from '@/lib/flags';
+import { todayYmd } from '@/lib/loan';
 import { useThemeColors } from '@/lib/theme';
+import { useFlagThresholds } from '@/store/flag-settings';
 import type { Borrower } from '@/types/borrower';
 import type { LoanSummary } from '@/types/loan';
 
@@ -27,17 +32,24 @@ export default function BorrowerDetailsScreen() {
   const id = Number(useLocalSearchParams<{ id: string }>().id);
   const [borrower, setBorrower] = useState<Borrower | null | undefined>(undefined);
   const [loans, setLoans] = useState<LoanSummary[]>([]);
+  const [flag, setFlag] = useState<BorrowerFlag | null>(null);
+  const thresholds = useFlagThresholds();
   const [busy, setBusy] = useState(false);
 
   // Reload whenever this screen is shown again (e.g. after editing or creating a loan).
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      Promise.all([getBorrowerById(db, id), getLoansByBorrower(db, id)])
-        .then(([b, l]) => {
+      Promise.all([
+        getBorrowerById(db, id),
+        getLoansByBorrower(db, id),
+        getBorrowerFlag(db, id, todayYmd(), thresholds),
+      ])
+        .then(([b, l, f]) => {
           if (!active) return;
           setBorrower(b);
           setLoans(l);
+          setFlag(f);
         })
         .catch((error) => {
           console.error('[Load borrower failed]', error);
@@ -46,7 +58,7 @@ export default function BorrowerDetailsScreen() {
       return () => {
         active = false;
       };
-    }, [db, id]),
+    }, [db, id, thresholds]),
   );
 
   if (borrower === undefined) {
@@ -136,6 +148,15 @@ export default function BorrowerDetailsScreen() {
       <Stack.Screen options={{ title: borrower.fullName }} />
       <ScrollView className="flex-1 bg-slate-50 dark:bg-slate-950">
         <View className="gap-5 p-5" style={{ paddingBottom: insets.bottom + 24 }}>
+          {flag && flag.severity !== 'none' && (
+            <SeverityBanner
+              severity={flag.severity}
+              daysBehind={flag.daysBehind}
+              totalOverdue={flag.totalOverdue}
+              loanCount={flag.loanCount}
+            />
+          )}
+
           {/* Profile */}
           <View className="items-center gap-2 pt-2">
             <InitialsAvatar name={borrower.fullName} size="lg" />

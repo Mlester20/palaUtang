@@ -13,6 +13,7 @@ export const palette = {
     text: '#0f172a', // slate-900
     textMuted: '#64748b', // slate-500
     danger: '#dc2626', // red-600
+    warning: '#ea580c', // orange-600 (flagged borrowers)
     success: '#16a34a', // green-600
   },
   dark: {
@@ -23,6 +24,7 @@ export const palette = {
     text: '#ffffff',
     textMuted: '#94a3b8', // slate-400
     danger: '#f87171', // red-400
+    warning: '#fb923c', // orange-400
     success: '#4ade80', // green-400
   },
 };

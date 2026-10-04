@@ -137,3 +137,14 @@ export function clearAppLockSettings() {
   for (const key of Object.values(KEYS)) Storage.removeItemSync(key);
   update({ enabled: null, graceSeconds: DEFAULT_LOCK_GRACE_SECONDS });
 }
+
+/**
+ * Owner check before a sensitive change (Reset app, cash withdrawals/expenses, voids, opening
+ * balance). Only when App Lock is ON and the phone still has a screen lock; otherwise there is
+ * nothing to check against and it passes. Cancelled or failed → false: save nothing.
+ */
+export async function confirmOwner(): Promise<boolean> {
+  if (settings.enabled !== true) return true;
+  if (!(await getLockStatus()).hasScreenLock) return true;
+  return (await unlockWithDevice()) === 'success';
+}

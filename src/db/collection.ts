@@ -7,7 +7,9 @@ import {
   type CollectionRow,
   type CollectionSummary,
 } from '@/lib/collection';
-import type { LoanStatus, PaymentStatus, PaymentType } from '@/types/loan';
+import type { LoanStatus, PaymentKind, PaymentStatus, PaymentType } from '@/types/loan';
+
+import { cashPaymentCondition } from './cash-collected';
 
 type CollectionSqlRow = {
   loan_id: number;
@@ -38,21 +40,24 @@ type CollectionSqlRow = {
  */
 const COLLECTION_SQL = `
   WITH paid_today AS (
-    SELECT loan_id, SUM(amount) AS collected_today
-    FROM payments
-    WHERE status = 'active' AND paid_on = $today
-    GROUP BY loan_id
+    -- Cash received today (the shared definition in ./cash-collected: active payments,
+    -- netted settlements excluded because no cash changes hands).
+    SELECT p.loan_id, SUM(p.amount) AS collected_today
+    FROM payments p
+    WHERE ${cashPaymentCondition('p')} AND p.paid_on = $today
+    GROUP BY p.loan_id
   ),
   inst AS (
     SELECT i.loan_id,
            SUM(CASE WHEN i.due_date = $today THEN i.amount_due ELSE 0 END) AS due_today_amount,
-           SUM(CASE WHEN i.due_date = $today THEN i.amount_due - i.amount_paid ELSE 0 END)
+           SUM(CASE WHEN i.due_date = $today THEN i.amount_due - i.amount_paid - i.waived_amount ELSE 0 END)
              AS due_today_outstanding,
-           SUM(CASE WHEN i.due_date < $today THEN i.amount_due - i.amount_paid ELSE 0 END)
+           SUM(CASE WHEN i.due_date < $today THEN i.amount_due - i.amount_paid - i.waived_amount ELSE 0 END)
              AS overdue_outstanding,
            SUM(CASE WHEN i.due_date < $today AND i.status = 'missed' THEN 1 ELSE 0 END)
              AS balda_days,
-           MIN(CASE WHEN i.due_date < $today AND i.amount_paid < i.amount_due THEN i.due_date END)
+           MIN(CASE WHEN i.due_date < $today AND i.amount_paid + i.waived_amount < i.amount_due
+                    THEN i.due_date END)
              AS oldest_overdue_date
     FROM installments i
     JOIN loans l ON l.id = i.loan_id
@@ -139,6 +144,10 @@ export interface DatedPayment {
   amount: number;
   note: string | null;
   status: PaymentStatus;
+  /** 'settlement' = early payoff. */
+  type: PaymentKind;
+  /** Settlement deducted from a renewal (no cash): excluded from "collected". */
+  isNetted: boolean;
   voidReason: string | null;
   /** ISO timestamp of when it was entered (for the time shown). */
   createdAt: string;
@@ -154,11 +163,13 @@ export async function getPaymentsByDate(db: SQLiteDatabase, date: string): Promi
     amount: number;
     note: string | null;
     status: PaymentStatus;
+    type: PaymentKind;
+    is_netted: number;
     void_reason: string | null;
     created_at: string;
   }>(
     `SELECT p.id, p.loan_id, b.id AS borrower_id, b.full_name AS borrower_name, p.amount, p.note,
-            p.status, p.void_reason, p.created_at
+            p.status, p.type, p.is_netted, p.void_reason, p.created_at
      FROM payments p
      JOIN loans l ON l.id = p.loan_id
      JOIN borrowers b ON b.id = l.borrower_id
@@ -174,6 +185,8 @@ export async function getPaymentsByDate(db: SQLiteDatabase, date: string): Promi
     amount: r.amount,
     note: r.note,
     status: r.status,
+    type: r.type,
+    isNetted: r.is_netted === 1,
     voidReason: r.void_reason,
     createdAt: r.created_at,
   }));

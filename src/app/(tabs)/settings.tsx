@@ -5,11 +5,13 @@ import { useCallback, useState, type ReactNode } from 'react';
 import { Alert, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 
 import { SegmentedControl } from '@/components/SegmentedControl';
+import { Stepper } from '@/components/Stepper';
+import { getCashSetup, type CashSetup } from '@/db/cash';
 import { resetDatabase } from '@/db/migrations';
 import { t, type TranslationKey } from '@/i18n';
 import {
   clearAppLockSettings,
-  getAppLockSettings,
+  confirmOwner,
   getLockStatus,
   LOCK_GRACE_OPTIONS,
   setAppLockEnabled,
@@ -18,8 +20,18 @@ import {
   useAppLockSettings,
 } from '@/lib/appLock';
 import { showError } from '@/lib/errors';
+import { formatDisplayDate } from '@/lib/loan';
+import { formatPeso } from '@/lib/money';
+import { FLAG_THRESHOLD_LIMITS, validateThresholds, type FlagThresholds } from '@/lib/flags';
 import { useThemeColors } from '@/lib/theme';
-import { CURRENCIES, resetAppState, useAppState } from '@/store/app-state';
+import {
+  CURRENCIES,
+  resetAppState,
+  setDefaultSettlementMode,
+  useAppState,
+  type DefaultSettlementMode,
+} from '@/store/app-state';
+import { clearFlagSettings, setFlagThresholds, useFlagThresholds } from '@/store/flag-settings';
 
 const GRACE_LABELS: Record<(typeof LOCK_GRACE_OPTIONS)[number], TranslationKey> = {
   0: 'settings.lockAfterImmediately',
@@ -39,12 +51,9 @@ function confirmReset(db: SQLiteDatabase) {
         style: 'destructive',
         onPress: async () => {
           // With App Lock on, only the phone's owner may wipe the data.
-          const { enabled } = getAppLockSettings();
-          if (enabled && (await getLockStatus()).hasScreenLock) {
-            if ((await unlockWithDevice()) !== 'success') {
-              Alert.alert(t('settings.resetAuthFailedTitle'), t('settings.resetAuthFailedMessage'));
-              return;
-            }
+          if (!(await confirmOwner())) {
+            Alert.alert(t('settings.resetAuthFailedTitle'), t('settings.resetAuthFailedMessage'));
+            return;
           }
           try {
             // Wipe the database first: if that fails, the profile is kept and nothing changes.
@@ -55,6 +64,8 @@ function confirmReset(db: SQLiteDatabase) {
           }
           // Next launch decides App Lock again, like a fresh install.
           clearAppLockSettings();
+          // Balda flag thresholds back to the defaults (3 and 7 days).
+          clearFlagSettings();
           // No router.replace needed: the root layout guards close (tabs) and send the user
           // back to onboarding as soon as the profile is cleared, removing tabs from history.
           resetAppState();
@@ -71,16 +82,20 @@ export default function SettingsScreen() {
   const lock = useAppLockSettings();
   const [hasScreenLock, setHasScreenLock] = useState<boolean | null>(null);
   const [lockBusy, setLockBusy] = useState(false);
+  const [cashSetup, setCashSetup] = useState<CashSetup | null>(null);
 
   // Re-check every time Settings is shown: the user may have changed the phone's screen lock.
   useFocusEffect(
     useCallback(() => {
       let active = true;
       getLockStatus().then((s) => active && setHasScreenLock(s.hasScreenLock));
+      getCashSetup(db)
+        .then((c) => active && setCashSetup(c))
+        .catch((error) => console.error('[Load cash setup failed]', error));
       return () => {
         active = false;
       };
-    }, []),
+    }, [db]),
   );
 
   if (!profile) return null;
@@ -180,6 +195,96 @@ export default function SettingsScreen() {
         )}
       </Section>
 
+      <Section title={t('settlement.settingsSection')}>
+        <Text className="text-sm text-slate-600 dark:text-slate-400">
+          {t('settlement.settingsHint')}
+        </Text>
+        {(
+          [
+            { mode: 'full', title: 'settlement.settingsFull', hint: 'settlement.settingsFullHint' },
+            {
+              mode: 'prorata',
+              title: 'settlement.settingsProrata',
+              hint: 'settlement.settingsProrataHint',
+            },
+          ] as const satisfies readonly {
+            mode: DefaultSettlementMode;
+            title: TranslationKey;
+            hint: TranslationKey;
+          }[]
+        ).map((option) => {
+          const selected = profile.settlementMode === option.mode;
+          return (
+            <Pressable
+              key={option.mode}
+              onPress={() => setDefaultSettlementMode(option.mode)}
+              accessibilityRole="radio"
+              accessibilityState={{ selected }}
+              className="min-h-14 flex-row items-start gap-3 active:opacity-70">
+              <Ionicons
+                name={selected ? 'radio-button-on' : 'radio-button-off'}
+                size={24}
+                color={selected ? colors.primary : colors.textMuted}
+                style={{ marginTop: 1 }}
+              />
+              <View className="flex-1 gap-0.5">
+                <Text className="text-base font-semibold text-slate-900 dark:text-white">
+                  {t(option.title)}
+                </Text>
+                <Text className="text-sm text-slate-600 dark:text-slate-400">{t(option.hint)}</Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </Section>
+
+      <Section title={t('cash.settingsSection')}>
+        {cashSetup === null ? null : cashSetup.isSetUp ? (
+          <>
+            <Row label={t('cash.settingsStatus')} value={t('cash.settingsOn')} />
+            <Row label={t('cash.openingLabel')} value={formatPeso(cashSetup.openingAmount)} />
+            <Row
+              label={t('cash.startDateLabel')}
+              value={formatDisplayDate(cashSetup.ledgerStartDate!)}
+            />
+            <Pressable
+              onPress={() => router.push({ pathname: '/cash/setup', params: { mode: 'adjust' } })}
+              accessibilityRole="button"
+              className="min-h-12 flex-row items-center gap-3 active:opacity-60">
+              <Ionicons name="create-outline" size={22} color={colors.primary} />
+              <Text className="flex-1 text-base text-slate-900 dark:text-white">
+                {t('cash.adjustTitle')}
+              </Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/cash')}
+              accessibilityRole="button"
+              className="min-h-12 flex-row items-center gap-3 active:opacity-60">
+              <Ionicons name="wallet-outline" size={22} color={colors.primary} />
+              <Text className="flex-1 text-base text-slate-900 dark:text-white">
+                {t('cash.openCash')}
+              </Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Row label={t('cash.settingsStatus')} value={t('cash.settingsOff')} />
+            <Pressable
+              onPress={() => router.push('/cash/setup')}
+              accessibilityRole="button"
+              className="min-h-12 items-center justify-center rounded-xl bg-teal-700 active:bg-teal-800 dark:bg-teal-500">
+              <Text className="text-base font-bold text-white">{t('cash.setupButton')}</Text>
+            </Pressable>
+          </>
+        )}
+      </Section>
+
+      <Section title={t('flags.settingsSection')}>
+        <BaldaFlagSettings />
+      </Section>
+
       <Section title="App">
         <Pressable
           onPress={() => router.push('/intro')}
@@ -226,5 +331,60 @@ function Row({ label, value }: { label: string; value: string }) {
         {value}
       </Text>
     </View>
+  );
+}
+
+function daysText(count: number) {
+  return count === 1 ? t('flags.oneDay') : t('flags.days', { count });
+}
+
+/**
+ * Two steppers. A change is saved right away when the pair is valid (1 ≤ flag < critical ≤ 60);
+ * otherwise the draft stays on screen with an inline error and nothing is saved.
+ */
+function BaldaFlagSettings() {
+  const saved = useFlagThresholds();
+  const [draft, setDraft] = useState<FlagThresholds>(saved);
+  const error = validateThresholds(draft);
+
+  const change = (next: FlagThresholds) => {
+    setDraft(next);
+    setFlagThresholds(next); // ignored (returns false) while invalid
+  };
+
+  return (
+    <>
+      <Text className="text-sm text-slate-600 dark:text-slate-400">{t('flags.settingsHint')}</Text>
+      <Stepper
+        label={t('flags.flagAfter')}
+        value={draft.flagAfter}
+        valueText={daysText(draft.flagAfter)}
+        min={FLAG_THRESHOLD_LIMITS.min}
+        max={FLAG_THRESHOLD_LIMITS.max}
+        invalid={error !== null}
+        onChange={(flagAfter) => change({ ...draft, flagAfter })}
+      />
+      <Stepper
+        label={t('flags.criticalAfter')}
+        value={draft.criticalAfter}
+        valueText={daysText(draft.criticalAfter)}
+        min={FLAG_THRESHOLD_LIMITS.min}
+        max={FLAG_THRESHOLD_LIMITS.max}
+        invalid={error !== null}
+        onChange={(criticalAfter) => change({ ...draft, criticalAfter })}
+      />
+      {error && (
+        <Text className="text-base font-semibold text-red-600 dark:text-red-400">
+          {error === 'order' ? t('flags.errorOrder') : t('flags.errorRange')}
+        </Text>
+      )}
+      <Text className="text-sm text-slate-600 dark:text-slate-400">
+        {t('flags.settingsSummary', {
+          late: daysText(1),
+          flag: daysText(saved.flagAfter),
+          critical: daysText(saved.criticalAfter),
+        })}
+      </Text>
+    </>
   );
 }

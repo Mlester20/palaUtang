@@ -12,7 +12,11 @@ export type BusinessProfile = {
   baldaPenaltyEnabled: boolean;
   /** Penalty per balda day, in the selected currency. Only used when enabled. */
   baldaPenaltyAmount: number;
+  /** Default early-payoff calculation (can be changed per transaction). */
+  settlementMode: DefaultSettlementMode;
 };
+
+export type DefaultSettlementMode = 'full' | 'prorata';
 
 export type AppState = {
   /** Saved: the onboarding was finished (Skip or Get Started). It never shows automatically again. */
@@ -31,7 +35,12 @@ function readProfile(): BusinessProfile | null {
   const raw = Storage.getItemSync(KEYS.profile);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as BusinessProfile;
+    const saved = JSON.parse(raw) as Partial<BusinessProfile>;
+    // Profiles saved before Phase 8 have no settlementMode: default to 'full'.
+    return {
+      ...saved,
+      settlementMode: saved.settlementMode === 'prorata' ? 'prorata' : 'full',
+    } as BusinessProfile;
   } catch {
     return null;
   }
@@ -73,9 +82,23 @@ export function completeOnboarding() {
   setState({ ...state, hasCompletedOnboarding: true });
 }
 
+/** Settings → Early payoff default. */
+export function setDefaultSettlementMode(mode: DefaultSettlementMode) {
+  if (!state.profile) return;
+  saveProfile({ ...state.profile, settlementMode: mode });
+}
+
 export function saveProfile(profile: BusinessProfile) {
   Storage.setItemSync(KEYS.profile, JSON.stringify(profile));
   setState({ ...state, profile });
+}
+
+/**
+ * Re-reads everything from kv-store (e.g. after a restore wrote new values underneath), so
+ * every screen sees them at once.
+ */
+export function reloadAppState() {
+  setState(readState());
 }
 
 /** Clears the onboarding flag + profile so the first-run flow shows again (Settings → Reset app). */

@@ -1,14 +1,17 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, Text, View } from 'react-native';
 
-import { InitialsAvatar } from '@/components/dashboard';
+import { InitialsAvatar, StatusChip } from '@/components/dashboard';
 import { useThemeColors } from '@/lib/theme';
+import type { ChipTone } from '@/types/dashboard';
 
 type BorrowerListItemProps = {
   fullName: string;
   nickname: string | null;
   phone: string | null;
   archived: boolean;
+  /** Balda severity badge (Late / Flagged / Critical), if the borrower is behind. */
+  badge?: { label: string; tone: ChipTone } | null;
   onPress: () => void;
 };
 
@@ -17,6 +20,7 @@ export function BorrowerListItem({
   nickname,
   phone,
   archived,
+  badge,
   onPress,
 }: BorrowerListItemProps) {
   const colors = useThemeColors();
@@ -25,7 +29,7 @@ export function BorrowerListItem({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${fullName}${archived ? ', archived' : ''}`}
+      accessibilityLabel={`${fullName}${archived ? ', archived' : ''}${badge ? `, ${badge.label}` : ''}`}
       className="min-h-20 flex-row items-center gap-3 rounded-2xl bg-white px-4 py-3 active:opacity-70 dark:bg-slate-900">
       <View className={archived ? 'opacity-50' : undefined}>
         <InitialsAvatar name={fullName} />
@@ -52,6 +56,11 @@ export function BorrowerListItem({
           <Text className="text-sm text-slate-500 dark:text-slate-400" numberOfLines={1}>
             {phone}
           </Text>
+        )}
+        {badge && (
+          <View className="flex-row pt-1">
+            <StatusChip label={badge.label} tone={badge.tone} size="sm" />
+          </View>
         )}
       </View>
       <Ionicons name="chevron-forward" size={22} color={colors.textMuted} />

@@ -95,8 +95,32 @@ export default function RootLayout() {
                 <Stack.Screen name="loan/new" options={{ headerShown: true, title: 'New Loan' }} />
                 <Stack.Screen name="loan/[id]" options={{ headerShown: true, title: 'Loan' }} />
                 <Stack.Screen
+                  name="loan/settle"
+                  options={{ headerShown: true, title: t('settlement.screenTitle') }}
+                />
+                <Stack.Screen
                   name="payment/new"
                   options={{ headerShown: true, title: t('payments.newTitle') }}
+                />
+                <Stack.Screen
+                  name="cash/index"
+                  options={{ headerShown: true, title: t('cash.screenTitle') }}
+                />
+                <Stack.Screen
+                  name="cash/new"
+                  options={{ headerShown: true, title: t('cash.newTitle') }}
+                />
+                <Stack.Screen
+                  name="cash/count"
+                  options={{ headerShown: true, title: t('cash.countTitle') }}
+                />
+                <Stack.Screen
+                  name="cash/setup"
+                  options={{ headerShown: true, title: t('cash.setupTitle') }}
+                />
+                <Stack.Screen
+                  name="reports"
+                  options={{ headerShown: true, title: t('reports.title') }}
                 />
                 {/* Settings → View intro again (same slides, no data or flags changed). */}
                 <Stack.Screen name="intro" />

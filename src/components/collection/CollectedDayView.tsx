@@ -4,6 +4,7 @@ import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 
 import type { DatedPayment } from '@/db/collection';
 import { t } from '@/i18n';
+import { isCashPayment } from '@/lib/cash';
 import { formatTime } from '@/lib/date';
 import { formatDisplayDate } from '@/lib/loan';
 import { formatPeso } from '@/lib/money';
@@ -37,7 +38,10 @@ export function CollectedDayView({
   header,
 }: CollectedDayViewProps) {
   const colors = useThemeColors();
-  const total = payments.filter((p) => p.status === 'active').reduce((sum, p) => sum + p.amount, 0);
+  // Cash only: a netted settlement was deducted from a renewal, no money changed hands.
+  const total = payments
+    .filter(isCashPayment)
+    .reduce((sum, p) => sum + p.amount, 0);
 
   return (
     <FlatList
@@ -113,6 +117,11 @@ export function CollectedDayView({
                 {t('collection.loanRef', { id: item.loanId })} ·{' '}
                 {formatTime(new Date(item.createdAt))}
               </Text>
+              {item.type === 'settlement' && (
+                <Text className="text-sm font-semibold text-violet-700 dark:text-violet-300">
+                  {item.isNetted ? t('settlement.labelNetted') : t('settlement.labelEarlyPayoff')}
+                </Text>
+              )}
               {item.note && (
                 <Text className="text-sm text-slate-600 dark:text-slate-300">{item.note}</Text>
               )}

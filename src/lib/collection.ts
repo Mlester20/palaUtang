@@ -31,6 +31,8 @@
 
 import { daysBetween, type PaymentType } from './loan';
 
+import type { LoanStatus } from '@/types/loan';
+
 /** One loan's collection numbers for a given day (from getCollectionList). */
 export interface CollectionRow {
   loanId: number;
@@ -39,7 +41,7 @@ export interface CollectionRow {
   nickname: string | null;
   phone: string | null;
   paymentType: PaymentType;
-  loanStatus: 'active' | 'completed' | 'cancelled';
+  loanStatus: LoanStatus;
   /** Regular installment amount (daily hulog, or the lump sum). */
   installmentAmount: number;
   /** Full amount of today's regular installment(s), paid or not. */
@@ -187,4 +189,9 @@ export function summarizeCollection(rows: ClassifiedRow[]): CollectionSummary {
     paidCount,
     totalCount: toCollectCount + paidCount,
   };
+}
+
+/** Progress as a whole percent (0–100), or null for the empty state. Shared by Home and Collection. */
+export function progressPercent(summary: Pick<CollectionSummary, 'progress'>): number | null {
+  return summary.progress === null ? null : Math.round(summary.progress * 100);
 }

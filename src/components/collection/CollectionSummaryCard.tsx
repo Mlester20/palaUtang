@@ -1,12 +1,12 @@
 import { Text, View } from 'react-native';
 
 import { t } from '@/i18n';
-import type { CollectionSummary } from '@/lib/collection';
+import { progressPercent, type CollectionSummary } from '@/lib/collection';
 import { formatPeso } from '@/lib/money';
 
 /** Collected today, remaining, progress and "X of Y paid" — big numbers for outdoor use. */
 export function CollectionSummaryCard({ summary }: { summary: CollectionSummary }) {
-  const percent = summary.progress === null ? null : Math.round(summary.progress * 100);
+  const percent = progressPercent(summary);
 
   return (
     <View className="gap-4 rounded-3xl bg-teal-700 p-5 dark:bg-teal-800">

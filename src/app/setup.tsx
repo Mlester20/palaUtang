@@ -38,6 +38,7 @@ export default function SetupScreen() {
       currency,
       baldaPenaltyEnabled: penaltyEnabled,
       baldaPenaltyAmount: penaltyEnabled ? parsedPenalty : 0,
+      settlementMode: 'full',
     });
   };
 

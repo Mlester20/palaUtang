@@ -2,11 +2,14 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { memo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-import { InitialsAvatar } from '@/components/dashboard';
+import { InitialsAvatar, StatusChip } from '@/components/dashboard';
 import { t } from '@/i18n';
 import type { ClassifiedRow } from '@/lib/collection';
+import type { FlagThresholds } from '@/lib/flags';
 import { formatPeso } from '@/lib/money';
 import { useThemeColors } from '@/lib/theme';
+
+import { collectionChip } from './collection-chip';
 
 type CollectionRowItemProps = {
   row: ClassifiedRow;
@@ -15,6 +18,9 @@ type CollectionRowItemProps = {
   onCollect: (row: ClassifiedRow) => void;
   onMore: (row: ClassifiedRow) => void;
   onOpen: (row: ClassifiedRow) => void;
+  /** For the overdue chip's severity colour. */
+  today: string;
+  thresholds: FlagThresholds;
 };
 
 function daysText(count: number) {
@@ -26,41 +32,6 @@ function lateText(row: ClassifiedRow) {
   return daysText(
     row.paymentType === 'daily' && row.baldaDays > 0 ? row.baldaDays : Math.max(1, row.daysOverdue),
   );
-}
-
-function chip(row: ClassifiedRow): { label: string; box: string; text: string } {
-  switch (row.status) {
-    case 'overdue':
-      return {
-        label: t('collection.chipOverdue', { days: lateText(row) }),
-        box: 'rounded-full bg-red-100 px-2.5 py-1 dark:bg-red-950',
-        text: 'text-xs font-bold text-red-700 dark:text-red-300',
-      };
-    case 'partial':
-      return {
-        label: t('collection.chipPartial'),
-        box: 'rounded-full bg-amber-100 px-2.5 py-1 dark:bg-amber-950',
-        text: 'text-xs font-bold text-amber-800 dark:text-amber-300',
-      };
-    case 'paid_today':
-      return {
-        label: t('collection.chipPaid'),
-        box: 'rounded-full bg-green-100 px-2.5 py-1 dark:bg-green-950',
-        text: 'text-xs font-bold text-green-800 dark:text-green-300',
-      };
-    case 'paid_in_advance':
-      return {
-        label: t('collection.chipPaidAdvance'),
-        box: 'rounded-full bg-sky-100 px-2.5 py-1 dark:bg-sky-950',
-        text: 'text-xs font-bold text-sky-800 dark:text-sky-200',
-      };
-    default:
-      return {
-        label: t('collection.chipDueToday'),
-        box: 'rounded-full bg-slate-200 px-2.5 py-1 dark:bg-slate-700',
-        text: 'text-xs font-bold text-slate-700 dark:text-slate-200',
-      };
-  }
 }
 
 function breakdown(row: ClassifiedRow): string {
@@ -86,9 +57,17 @@ function breakdown(row: ClassifiedRow): string {
   return t('collection.breakdownToday', { today: formatPeso(row.dueTodayOutstanding) });
 }
 
-function CollectionRowItemBase({ row, busy, onCollect, onMore, onOpen }: CollectionRowItemProps) {
+function CollectionRowItemBase({
+  row,
+  busy,
+  onCollect,
+  onMore,
+  onOpen,
+  today,
+  thresholds,
+}: CollectionRowItemProps) {
   const colors = useThemeColors();
-  const c = chip(row);
+  const c = collectionChip(row, today, thresholds);
   const toCollect = row.toCollect > 0;
 
   return (
@@ -108,9 +87,7 @@ function CollectionRowItemBase({ row, busy, onCollect, onMore, onOpen }: Collect
             </Text>
           )}
         </View>
-        <View className={c.box}>
-          <Text className={c.text}>{c.label}</Text>
-        </View>
+        <StatusChip label={c.label} tone={c.tone} size="sm" />
       </Pressable>
 
       <Text className="text-base text-slate-700 dark:text-slate-200">{breakdown(row)}</Text>

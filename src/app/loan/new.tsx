@@ -23,7 +23,11 @@ import { ProfitCheckCard } from '@/components/loans/ProfitCheckCard';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { getBorrowerById, getBorrowers } from '@/db/borrowers';
 import { createLoanWithSchedule } from '@/db/loans';
+import { previewSettlement, settleAndRenew } from '@/db/settlement';
+import { settleErrorText } from '@/components/loans/settlement-messages';
+import { t } from '@/i18n';
 import { showError } from '@/lib/errors';
+import { computeRenewal } from '@/lib/settlement';
 import {
   assessProfit,
   computeLoanPreview,
@@ -38,6 +42,7 @@ import {
 import { formatPeso, parsePesoToCentavos } from '@/lib/money';
 import { useThemeColors } from '@/lib/theme';
 import type { Borrower } from '@/types/borrower';
+import type { SettlementMode } from '@/types/loan';
 
 const SEARCH_DEBOUNCE_MS = 250;
 
@@ -45,8 +50,31 @@ export default function NewLoanScreen() {
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
   const colors = useThemeColors();
-  const params = useLocalSearchParams<{ borrowerId?: string }>();
+  const params = useLocalSearchParams<{
+    borrowerId?: string;
+    // Renewal (from Settle & Renew): the old loan is settled when THIS form is saved.
+    renewedFromLoanId?: string;
+    settleDate?: string;
+    settleMode?: SettlementMode;
+    settleDiscount?: string;
+    settleNote?: string;
+  }>();
   const fixedBorrowerId = params.borrowerId ? Number(params.borrowerId) : null;
+  const renewal = params.renewedFromLoanId
+    ? {
+        loanId: Number(params.renewedFromLoanId),
+        settlementDate: params.settleDate ?? todayYmd(),
+        mode: (params.settleMode ?? 'full') as SettlementMode,
+        discount: params.settleDiscount ? Number(params.settleDiscount) : undefined,
+        note: params.settleNote || null,
+      }
+    : null;
+  const [renewalAmount, setRenewalAmount] = useState<number | null>(null);
+  const [renewalCtx, setRenewalCtx] = useState({
+    startDate: '',
+    latestPaymentDate: null as string | null,
+    balance: 0,
+  });
 
   // ── Borrower (fixed from the borrower page, or picked here) ──
   const [borrower, setBorrower] = useState<Borrower | null | undefined>(
@@ -54,6 +82,25 @@ export default function NewLoanScreen() {
   );
   const [pickerQuery, setPickerQuery] = useState('');
   const [pickerResults, setPickerResults] = useState<Borrower[] | null>(null);
+
+  const renewalKey = renewal ? JSON.stringify(renewal) : '';
+  useEffect(() => {
+    if (!renewalKey) return;
+    const r = JSON.parse(renewalKey) as NonNullable<typeof renewal>;
+    previewSettlement(db, r, todayYmd())
+      .then((p) => {
+        if (!p) return;
+        setRenewalAmount(
+          p.errors.length === 0 && p.dateErrors.length === 0 ? p.settlementAmount : null,
+        );
+        setRenewalCtx({
+          startDate: '',
+          latestPaymentDate: p.latestPaymentDate,
+          balance: p.remainingBalance,
+        });
+      })
+      .catch((error) => console.error('[Renewal preview failed]', error));
+  }, [db, renewalKey]);
 
   useEffect(() => {
     if (!fixedBorrowerId) return;
@@ -101,6 +148,11 @@ export default function NewLoanScreen() {
   const term = /^\d+$/.test(termText.trim()) ? Number(termText.trim()) : null;
   const rate = /^\d+(\.\d+)?$/.test(rateText.trim()) ? Number(rateText.trim()) : null;
   const amount = parsePesoToCentavos(amountText);
+
+  const renewalCheck =
+    renewal && renewalAmount !== null && principal !== null
+      ? computeRenewal({ settlementAmount: renewalAmount, newPrincipal: principal })
+      : null;
 
   const fieldErrors = {
     principal: principal === null ? 'Enter the amount lent, e.g. 5000.' : null,
@@ -163,6 +215,50 @@ export default function NewLoanScreen() {
   // ── Save ──
   const save = async () => {
     if (!borrower || !preview || !schedule || !endDate || principal === null) return;
+    const loanInput = {
+      principal,
+      interestRate: preview.ratePercent,
+      interestAmount: preview.interestCentavos,
+      totalPayable: preview.totalPayableCentavos,
+      paymentType,
+      numberOfInstallments: preview.numberOfInstallments,
+      installmentAmount: preview.installmentCentavos,
+      startDate,
+      endDate,
+      skipSundays: isDaily && skipSundays,
+      notes: notes.trim() || null,
+      schedule: schedule.map((row) => ({
+        installmentNumber: row.installmentNumber,
+        dueDate: row.dueDate,
+        amountDue: row.amountDueCentavos,
+      })),
+    };
+    if (renewal && renewalAmount !== null) {
+      try {
+        // ONE transaction: settle the old loan (netted) + create this one. All or nothing.
+        const result = await settleAndRenew(
+          db,
+          { ...renewal, expectedAmount: renewalAmount },
+          loanInput,
+          todayYmd(),
+        );
+        // Drop this form and the Settle screen from the stack, then show the new loan.
+        router.dismiss(2);
+        router.push({ pathname: '/loan/[id]', params: { id: String(result.newLoanId) } });
+        Alert.alert(
+          t('settlement.renewalSaved'),
+          t('settlement.renewalSavedMessage', { amount: formatPeso(result.cashToRelease) }),
+        );
+      } catch (error) {
+        const text = settleErrorText(error, renewalCtx);
+        if (text) Alert.alert(t('settlement.renewalFailed'), text);
+        else showError(t('settlement.renewalFailed'), error);
+      } finally {
+        busy.current = false;
+        setSaving(false);
+      }
+      return;
+    }
     try {
       const id = await createLoanWithSchedule(db, {
         borrowerId: borrower.id,
@@ -202,6 +298,7 @@ export default function NewLoanScreen() {
     if (!borrower || hasFieldErrors || !previewValid || !schedule || !endDate || busy.current) {
       return;
     }
+    if (renewal && (renewalAmount === null || renewalCheck?.error)) return;
     busy.current = true;
     setSaving(true);
 
@@ -297,6 +394,39 @@ export default function NewLoanScreen() {
               </Pressable>
             )}
           </View>
+
+          {renewal && (
+            <View className="gap-3 rounded-2xl border-2 border-sky-500 bg-sky-50 p-5 dark:border-sky-700 dark:bg-sky-950">
+              <Text className="text-sm font-bold uppercase text-sky-800 dark:text-sky-200">
+                {t('settlement.renewalTitle')}
+              </Text>
+              <View className="flex-row justify-between gap-3">
+                <Text className="text-base text-slate-700 dark:text-slate-200">
+                  {t('settlement.renewalPreviousBalance')}
+                </Text>
+                <Text className="text-base font-bold text-slate-900 dark:text-white">
+                  {renewalAmount === null ? '—' : formatPeso(renewalAmount)}
+                </Text>
+              </View>
+              <View className="flex-row justify-between gap-3 border-t border-sky-200 pt-3 dark:border-sky-800">
+                <Text className="text-base font-semibold text-slate-700 dark:text-slate-200">
+                  {t('settlement.renewalCashToRelease')}
+                </Text>
+                <Text className="text-2xl font-extrabold text-slate-900 dark:text-white">
+                  {renewalCheck && !renewalCheck.error
+                    ? formatPeso(renewalCheck.cashToRelease)
+                    : '—'}
+                </Text>
+              </View>
+              {renewalCheck?.error && (
+                <Text className="text-sm font-medium text-red-600 dark:text-red-400">
+                  {t('settlement.renewalPrincipalTooLow', {
+                    amount: formatPeso(renewalAmount ?? 0),
+                  })}
+                </Text>
+              )}
+            </View>
+          )}
 
           <FormField
             label="Principal"

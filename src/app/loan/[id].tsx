@@ -9,6 +9,7 @@ import {
   AdvanceMarker,
   InstallmentStatusChip,
   LoanStatusBadge,
+  RenewedMarker,
 } from '@/components/loans/StatusBadges';
 import { ProgressBar } from '@/components/loans/ProgressBar';
 import { VoidPaymentModal } from '@/components/payments/VoidPaymentModal';
@@ -17,6 +18,7 @@ import {
   getLoanBalanceSummary,
   getPaymentsByLoan,
   recomputeLoan,
+  VoidBlockedError,
   voidPayment,
 } from '@/db/payments';
 import { t } from '@/i18n';
@@ -128,9 +130,22 @@ export default function LoanDetailScreen() {
       setData(await load());
       Alert.alert(t('payments.voidedTitle'), t('payments.voidedMessage'));
     } catch (error) {
-      showError(t('payments.voidFailed'), error);
+      if (error instanceof VoidBlockedError) {
+        setVoiding(null);
+        Alert.alert(t('settlement.voidBlockedTitle'), t(`settlement.${error.rule}`));
+      } else {
+        showError(t('payments.voidFailed'), error);
+      }
     }
   };
+
+  const settlementPayment = payments.find((p) => p.type === 'settlement' && p.status === 'active');
+  const modeLabel = (mode: string | null) =>
+    mode === 'prorata'
+      ? t('settlement.modeProrata')
+      : mode === 'discount'
+        ? t('settlement.modeDiscount')
+        : t('settlement.modeFull');
 
   const confirmCancel = () => {
     Alert.alert(
@@ -180,7 +195,10 @@ export default function LoanDetailScreen() {
               <Ionicons name="chevron-forward" size={18} color={colors.primary} />
             </View>
           </Pressable>
-          <LoanStatusBadge status={loan.status} />
+          <View className="items-end gap-1">
+            <LoanStatusBadge status={loan.status} />
+            {loan.renewedByLoanId !== null && <RenewedMarker />}
+          </View>
         </View>
 
         <View className="gap-1">
@@ -284,7 +302,72 @@ export default function LoanDetailScreen() {
         />
       </View>
 
+      {/* Closed early (settlement) */}
+      {loan.status === 'closed_early' && (
+        <View className="gap-3 rounded-2xl border-2 border-violet-300 bg-violet-50 p-5 dark:border-violet-800 dark:bg-violet-950">
+          <Text className="text-sm font-bold uppercase text-violet-800 dark:text-violet-200">
+            {t('settlement.closedTitle')}
+          </Text>
+          <Row
+            label={t('settlement.closedOn')}
+            value={loan.closedAt ? formatDisplayDate(loan.closedAt) : '—'}
+          />
+          {settlementPayment && (
+            <Row
+              label={t('settlement.settlementAmount')}
+              value={`${formatPeso(settlementPayment.amount)}${
+                settlementPayment.isNetted ? ` · ${t('settlement.labelNetted')}` : ''
+              }`}
+            />
+          )}
+          <Row label={t('settlement.discount')} value={formatPeso(loan.discountAmount)} />
+          <Row label={t('settlement.mode')} value={modeLabel(loan.settlementMode)} />
+          {loan.closedReason && <Row label={t('settlement.note')} value={loan.closedReason} />}
+          {settlementPayment && (
+            <Pressable
+              onPress={() => setVoiding(settlementPayment)}
+              accessibilityRole="button"
+              className="min-h-12 items-center justify-center rounded-xl border border-red-300 bg-white active:opacity-70 dark:border-red-900 dark:bg-slate-900">
+              <Text className="text-base font-bold text-red-600 dark:text-red-400">
+                {t('settlement.voidSettlement')}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+
+      {/* Renewal links */}
+      {loan.renewedByLoanId !== null && (
+        <LinkRow
+          text={t('settlement.renewedInto', { id: loan.renewedByLoanId })}
+          onPress={() =>
+            router.push({ pathname: '/loan/[id]', params: { id: String(loan.renewedByLoanId) } })
+          }
+        />
+      )}
+      {loan.renewedFromLoanId !== null && (
+        <LinkRow
+          text={t('settlement.renewedFrom', { id: loan.renewedFromLoanId })}
+          onPress={() =>
+            router.push({ pathname: '/loan/[id]', params: { id: String(loan.renewedFromLoanId) } })
+          }
+        />
+      )}
+
       {/* Actions */}
+      {loan.status === 'active' && (
+        <Pressable
+          onPress={() =>
+            router.push({ pathname: '/loan/settle', params: { loanId: String(loan.id) } })
+          }
+          accessibilityRole="button"
+          className="min-h-14 flex-row items-center justify-center gap-2 rounded-2xl border-2 border-violet-400 bg-white active:opacity-70 dark:border-violet-700 dark:bg-slate-900">
+          <Ionicons name="flag-outline" size={22} color="#7c3aed" />
+          <Text className="text-lg font-bold text-violet-700 dark:text-violet-300">
+            {t('settlement.settleEarly')}
+          </Text>
+        </Pressable>
+      )}
       {loan.status === 'active' && (
         <Pressable
           onPress={() =>
@@ -339,6 +422,13 @@ export default function LoanDetailScreen() {
                     <Text className="text-sm text-slate-600 dark:text-slate-300">
                       {formatDisplayDate(p.paidOn)}
                     </Text>
+                    {p.type === 'settlement' && (
+                      <Text className="text-sm font-semibold text-violet-700 dark:text-violet-300">
+                        {p.isNetted
+                          ? t('settlement.labelNetted')
+                          : t('settlement.labelEarlyPayoff')}
+                      </Text>
+                    )}
                     {p.note && (
                       <Text className="text-sm text-slate-500 dark:text-slate-400">{p.note}</Text>
                     )}
@@ -419,6 +509,11 @@ export default function LoanDetailScreen() {
                     })}
                   </Text>
                 )}
+                {item.waivedAmount > 0 && (
+                  <Text className="text-xs font-semibold text-violet-700 dark:text-violet-300">
+                    {t('settlement.waived', { amount: formatPeso(item.waivedAmount) })}
+                  </Text>
+                )}
                 {item.amountPaid > 0 && item.amountPaid < item.amountDue && (
                   <Text className="text-xs text-slate-500 dark:text-slate-400">
                     {t('payments.paidOf', {
@@ -449,9 +544,22 @@ export default function LoanDetailScreen() {
         amountText={voiding ? formatPeso(voiding.amount) : ''}
         dateText={voiding ? formatDisplayDate(voiding.paidOn) : ''}
         onCancel={() => setVoiding(null)}
+        warning={voiding?.type === 'settlement' ? t('settlement.voidSettlementWarning') : undefined}
         onConfirm={onVoid}
       />
     </>
+  );
+}
+
+function LinkRow({ text, onPress }: { text: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="link"
+      className="min-h-12 flex-row items-center justify-between rounded-2xl bg-white px-4 active:opacity-70 dark:bg-slate-900">
+      <Text className="text-base font-semibold text-sky-700 dark:text-sky-300">{text}</Text>
+      <Ionicons name="chevron-forward" size={20} color="#0369a1" />
+    </Pressable>
   );
 }
 

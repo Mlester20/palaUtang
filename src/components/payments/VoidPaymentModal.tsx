@@ -17,6 +17,11 @@ type VoidPaymentModalProps = {
   /** e.g. "₱300.00 payment on Friday, October 9, 2026" pieces for the message. */
   amountText: string;
   dateText: string;
+  /** Extra warning shown above the reason (e.g. voiding a settlement reopens the loan). */
+  warning?: string;
+  /** Override the payment wording (e.g. for a cash entry). */
+  title?: string;
+  message?: string;
   onCancel: () => void;
   /** Resolves when done; the modal stays open (busy) until then. */
   onConfirm: (reason: string) => Promise<void>;
@@ -27,6 +32,9 @@ export function VoidPaymentModal({
   visible,
   amountText,
   dateText,
+  warning,
+  title,
+  message,
   onCancel,
   onConfirm,
 }: VoidPaymentModalProps) {
@@ -66,11 +74,18 @@ export function VoidPaymentModal({
           style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
           <View className="w-full max-w-md gap-4 rounded-2xl bg-white p-5 dark:bg-slate-900">
             <Text className="text-xl font-bold text-slate-900 dark:text-white">
-              {t('payments.voidTitle')}
+              {title ?? t('payments.voidTitle')}
             </Text>
             <Text className="text-base text-slate-700 dark:text-slate-300">
-              {t('payments.voidMessage', { amount: amountText, date: dateText })}
+              {message ?? t('payments.voidMessage', { amount: amountText, date: dateText })}
             </Text>
+            {warning && (
+              <View className="rounded-xl bg-amber-50 p-3 dark:bg-amber-950">
+                <Text className="text-base font-semibold text-amber-900 dark:text-amber-100">
+                  {warning}
+                </Text>
+              </View>
+            )}
 
             <View className="gap-2">
               <Text className="text-base font-semibold text-slate-800 dark:text-slate-100">

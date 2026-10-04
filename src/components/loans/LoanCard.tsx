@@ -6,7 +6,7 @@ import { formatPeso } from '@/lib/money';
 import type { LoanSummary } from '@/types/loan';
 
 import { ProgressBar } from './ProgressBar';
-import { LoanStatusBadge } from './StatusBadges';
+import { LoanStatusBadge, RenewedMarker } from './StatusBadges';
 
 type LoanCardProps = {
   loan: Pick<
@@ -18,6 +18,7 @@ type LoanCardProps = {
     | 'totalCount'
     | 'startDate'
     | 'paymentType'
+    | 'renewedByLoanId'
   >;
   onPress: () => void;
 };
@@ -43,7 +44,10 @@ export function LoanCard({ loan, onPress }: LoanCardProps) {
             Total payable {formatPeso(loan.totalPayable)}
           </Text>
         </View>
-        <LoanStatusBadge status={loan.status} />
+        <View className="items-end gap-1">
+          <LoanStatusBadge status={loan.status} />
+          {loan.renewedByLoanId !== null && <RenewedMarker />}
+        </View>
       </View>
       <View className="gap-1.5">
         <ProgressBar value={progress} />

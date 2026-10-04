@@ -8,6 +8,7 @@ import type {
   LoanStatus,
   LoanSummary,
   PaymentType,
+  SettlementMode,
 } from '@/types/loan';
 
 import { writeTransaction } from './transaction';
@@ -27,6 +28,11 @@ type LoanRow = {
   skip_sundays: number;
   status: LoanStatus;
   notes: string | null;
+  closed_at: string | null;
+  closed_reason: string | null;
+  settlement_mode: SettlementMode | null;
+  discount_amount: number;
+  renewed_from_loan_id: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -36,6 +42,7 @@ type LoanSummaryRow = LoanRow & {
   paid_count: number;
   total_count: number;
   amount_paid: number;
+  renewed_by_loan_id: number | null;
 };
 
 type InstallmentRow = {
@@ -46,6 +53,7 @@ type InstallmentRow = {
   original_due_date: string;
   amount_due: number;
   amount_paid: number;
+  waived_amount: number;
   status: InstallmentStatus;
   is_makeup: number;
   makeup_for_installment_id: number | null;
@@ -68,6 +76,11 @@ function toLoan(row: LoanRow): Loan {
     skipSundays: row.skip_sundays === 1,
     status: row.status,
     notes: row.notes,
+    closedAt: row.closed_at,
+    closedReason: row.closed_reason,
+    settlementMode: row.settlement_mode,
+    discountAmount: row.discount_amount,
+    renewedFromLoanId: row.renewed_from_loan_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -80,6 +93,7 @@ function toLoanSummary(row: LoanSummaryRow): LoanSummary {
     paidCount: row.paid_count ?? 0,
     totalCount: row.total_count ?? 0,
     amountPaid: row.amount_paid ?? 0,
+    renewedByLoanId: row.renewed_by_loan_id ?? null,
   };
 }
 
@@ -92,6 +106,7 @@ function toInstallment(row: InstallmentRow): Installment {
     originalDueDate: row.original_due_date,
     amountDue: row.amount_due,
     amountPaid: row.amount_paid,
+    waivedAmount: row.waived_amount,
     status: row.status,
     isMakeup: row.is_makeup === 1,
     makeupForInstallmentId: row.makeup_for_installment_id,
@@ -109,16 +124,18 @@ const SUMMARY_SELECT = `
          COALESCE(SUM(i.is_makeup = 0), 0) AS total_count,
          COALESCE(SUM(i.is_makeup = 0 AND i.status = 'paid'), 0) AS paid_count,
          (SELECT COALESCE(SUM(p.amount), 0) FROM payments p
-          WHERE p.loan_id = l.id AND p.status = 'active') AS amount_paid
+          WHERE p.loan_id = l.id AND p.status = 'active') AS amount_paid,
+         (SELECT MAX(r.id) FROM loans r
+          WHERE r.renewed_from_loan_id = l.id AND r.status != 'cancelled') AS renewed_by_loan_id
   FROM loans l
   JOIN borrowers b ON b.id = l.borrower_id
   LEFT JOIN installments i ON i.loan_id = l.id`;
 
 /**
- * Inserts the loan and its whole schedule in ONE transaction: if any row fails, nothing is saved.
- * Returns the new loan id.
+ * Inserts a loan and its whole schedule. Must run inside a write transaction (used by
+ * createLoanWithSchedule and by settleAndRenew, so a renewal is all-or-nothing).
  */
-export async function createLoanWithSchedule(
+export async function insertLoanWithSchedule(
   db: SQLiteDatabase,
   input: CreateLoanInput,
 ): Promise<number> {
@@ -132,57 +149,66 @@ export async function createLoanWithSchedule(
 
   const now = new Date().toISOString();
   let loanId = 0;
+  const result = await db.runAsync(
+    `INSERT INTO loans (
+       borrower_id, principal, interest_rate, interest_amount, total_payable, payment_type,
+       number_of_installments, installment_amount, start_date, end_date, skip_sundays,
+       status, notes, renewed_from_loan_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
+    [
+      input.borrowerId,
+      input.principal,
+      input.interestRate,
+      input.interestAmount,
+      input.totalPayable,
+      input.paymentType,
+      input.numberOfInstallments,
+      input.installmentAmount,
+      input.startDate,
+      input.endDate,
+      input.skipSundays ? 1 : 0,
+      input.notes?.trim() || null,
+      input.renewedFromLoanId ?? null,
+      now,
+      now,
+    ],
+  );
+  loanId = result.lastInsertRowId;
 
-  // Main connection (foreign_keys = ON: the borrower must exist), queued behind other writes.
-  await writeTransaction(db, async () => {
-    const result = await db.runAsync(
-      `INSERT INTO loans (
-         borrower_id, principal, interest_rate, interest_amount, total_payable, payment_type,
-         number_of_installments, installment_amount, start_date, end_date, skip_sundays,
-         status, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
-      [
-        input.borrowerId,
-        input.principal,
-        input.interestRate,
-        input.interestAmount,
-        input.totalPayable,
-        input.paymentType,
-        input.numberOfInstallments,
-        input.installmentAmount,
-        input.startDate,
-        input.endDate,
-        input.skipSundays ? 1 : 0,
-        input.notes?.trim() || null,
+  // One prepared statement reused for every installment (schedules can be 365 rows).
+  const insert = await db.prepareAsync(
+    `INSERT INTO installments (
+       loan_id, installment_number, due_date, original_due_date, amount_due, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  );
+  try {
+    for (const row of input.schedule) {
+      await insert.executeAsync([
+        loanId,
+        row.installmentNumber,
+        row.dueDate,
+        row.dueDate, // original_due_date starts equal to due_date and never changes
+        row.amountDue,
         now,
-        now,
-      ],
-    );
-    loanId = result.lastInsertRowId;
-
-    // One prepared statement reused for every installment (schedules can be 365 rows).
-    const insert = await db.prepareAsync(
-      `INSERT INTO installments (
-         loan_id, installment_number, due_date, original_due_date, amount_due, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    );
-    try {
-      for (const row of input.schedule) {
-        await insert.executeAsync([
-          loanId,
-          row.installmentNumber,
-          row.dueDate,
-          row.dueDate, // original_due_date starts equal to due_date and never changes
-          row.amountDue,
-          now,
-        ]);
-      }
-    } finally {
-      await insert.finalizeAsync();
+      ]);
     }
-  });
+  } finally {
+    await insert.finalizeAsync();
+  }
 
   return loanId;
+}
+
+/**
+ * Inserts the loan and its whole schedule in ONE transaction: if any row fails, nothing is saved.
+ * Returns the new loan id.
+ */
+export function createLoanWithSchedule(
+  db: SQLiteDatabase,
+  input: CreateLoanInput,
+): Promise<number> {
+  // Main connection (foreign_keys = ON: the borrower must exist), queued behind other writes.
+  return writeTransaction(db, () => insertLoanWithSchedule(db, input));
 }
 
 /** A borrower's loans, active first, newest first. */

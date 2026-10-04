@@ -1,4 +1,4 @@
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { formatPeso } from '@/lib/money';
 import type { DueTodayItem } from '@/types/dashboard';
@@ -6,11 +6,23 @@ import type { DueTodayItem } from '@/types/dashboard';
 import { InitialsAvatar } from './InitialsAvatar';
 import { StatusChip } from './StatusChip';
 
-type DueTodayRowProps = Pick<DueTodayItem, 'borrowerName' | 'amountDueCentavos' | 'status'>;
+type DueTodayRowProps = Omit<DueTodayItem, 'id'> & {
+  onPress?: () => void;
+};
 
-export function DueTodayRow({ borrowerName, amountDueCentavos, status }: DueTodayRowProps) {
+export function DueTodayRow({
+  borrowerName,
+  amountDueCentavos,
+  chipLabel,
+  chipTone,
+  onPress,
+}: DueTodayRowProps) {
   return (
-    <View className="min-h-16 flex-row items-center gap-3 py-3">
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      accessibilityRole="button"
+      className="min-h-16 flex-row items-center gap-3 py-3 active:opacity-70">
       <InitialsAvatar name={borrowerName} />
       <View className="flex-1 gap-0.5">
         <Text className="text-base font-semibold text-slate-900 dark:text-white" numberOfLines={1}>
@@ -20,7 +32,7 @@ export function DueTodayRow({ borrowerName, amountDueCentavos, status }: DueToda
           {formatPeso(amountDueCentavos)}
         </Text>
       </View>
-      <StatusChip status={status} />
-    </View>
+      <StatusChip label={chipLabel} tone={chipTone} size="sm" />
+    </Pressable>
   );
 }

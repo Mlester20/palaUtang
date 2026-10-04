@@ -29,6 +29,17 @@
  *     (shown as OVERDUE with days count), no make-up, no shift. ₱4,000 more → 'paid', completed.
  *  H. Paying more than the balance is rejected. Paying exactly the balance → loan 'completed';
  *     voiding that payment → balance > 0 → loan back to 'active'.
+ *
+ * Early payoff (Phase 8): a settlement is an ordinary payment with type 'settlement', filled
+ * oldest-first like any other. While an ACTIVE settlement exists the loan is closed:
+ *  - every regular installment not fully paid becomes 'settled' and its uncovered part is
+ *    waived_amount (a partly paid one keeps its amount_paid);
+ *  - make-up rows become 'skipped' (their day was paid) or 'settled' with waived 0 (the missed
+ *    day's own row already carries the waived money, so it is never counted twice);
+ *  - no balda, no new make-ups; status 'closed_early', closed_at = end_date = settlement date;
+ *  - discount = total_payable − everything paid, and the balance is 0.
+ * Voiding the settlement removes it from the input, so the very same function reopens the loan
+ * (waivers back to 0, balda/make-ups recomputed for today).
  */
 
 import { addDays, daysBetween, isSunday, type PaymentType } from './loan';
@@ -45,6 +56,8 @@ export interface CalcLoan {
   startDate: string;
 }
 
+export type CalcPaymentType = 'regular' | 'settlement';
+
 export interface CalcInstallment {
   id: number;
   installmentNumber: number;
@@ -52,6 +65,8 @@ export interface CalcInstallment {
   originalDueDate: string;
   amountDue: number;
   amountPaid: number;
+  /** Forgiven by an early payoff (0 unless the loan is closed early). */
+  waivedAmount?: number;
   status: InstallmentStatus;
   isMakeup: boolean;
   makeupForInstallmentId: number | null;
@@ -62,13 +77,16 @@ export interface CalcPayment {
   id: number;
   amount: number;
   paidOn: string;
+  /** Defaults to 'regular'. */
+  type?: CalcPaymentType;
 }
 
 // ───────────────────────── Outputs ─────────────────────────
 
 /** Target state of a row; id = null for a make-up row that must be inserted. */
-export interface TargetInstallment extends Omit<CalcInstallment, 'id'> {
+export interface TargetInstallment extends Omit<CalcInstallment, 'id' | 'waivedAmount'> {
   id: number | null;
+  waivedAmount: number;
 }
 
 export interface Allocation {
@@ -82,9 +100,13 @@ export interface LoanState {
   installments: TargetInstallment[];
   allocations: Allocation[];
   totalPaid: number;
+  /** total_payable − paid when closed early (the forgiven part), else 0. */
+  discountAmount: number;
   balance: number;
   endDate: string;
   status: LoanStatus;
+  /** Settlement date while closed early, else null. */
+  closedAt: string | null;
 }
 
 // ───────────────────────── Core ─────────────────────────
@@ -169,11 +191,19 @@ export function computeLoanState(
   }
 
   // 2. Regular rows: derived amount_paid + status. Due dates never move.
+  const settlement = ordered.find((p) => p.type === 'settlement') ?? null;
+  const totalPaid = allocations.reduce((sum, a) => sum + a.amount, 0);
+
+  if (settlement && loan.status !== 'cancelled') {
+    return closedState(loan, regular, makeups, paidById, allocations, totalPaid, settlement);
+  }
+
   const targets: TargetInstallment[] = regular.map((row) => {
     const amountPaid = paidById.get(row.id)!;
     return {
       ...row,
       amountPaid,
+      waivedAmount: 0,
       status: installmentStatus(loan.paymentType, row.amountDue, amountPaid, row.dueDate, today),
     };
   });
@@ -197,7 +227,14 @@ export function computeLoanState(
     const dueDate = makeupDates[k]!;
     targets.push(
       existing
-        ? { ...existing, dueDate, amountDue: miss.amountDue, amountPaid: 0, status: 'pending' }
+        ? {
+            ...existing,
+            dueDate,
+            amountDue: miss.amountDue,
+            amountPaid: 0,
+            waivedAmount: 0,
+            status: 'pending',
+          }
         : {
             id: null,
             installmentNumber: nextNumber++,
@@ -205,6 +242,7 @@ export function computeLoanState(
             originalDueDate: dueDate,
             amountDue: miss.amountDue,
             amountPaid: 0,
+            waivedAmount: 0,
             status: 'pending',
             isMakeup: true,
             makeupForInstallmentId: regularId,
@@ -213,13 +251,13 @@ export function computeLoanState(
   });
   for (const m of makeups) {
     if (!neededFor.has(m.makeupForInstallmentId!)) {
-      targets.push({ ...m, amountPaid: 0, status: 'skipped' });
+      targets.push({ ...m, amountPaid: 0, waivedAmount: 0, status: 'skipped' });
     }
   }
   targets.sort(byDueDate);
 
-  // 4. Totals, end date, loan status.
-  const totalPaid = allocations.reduce((sum, a) => sum + a.amount, 0);
+  // 4. Totals, end date, loan status. (A closed_early loan without an active settlement —
+  //    i.e. its settlement was voided — reopens here as active/completed.)
   const balance = loan.totalPayable - totalPaid;
   const endDate = targets
     .filter((t) => t.status !== 'skipped')
@@ -227,7 +265,59 @@ export function computeLoanState(
   const status: LoanStatus =
     loan.status === 'cancelled' ? 'cancelled' : balance <= 0 ? 'completed' : 'active';
 
-  return { installments: targets, allocations, totalPaid, balance, endDate, status };
+  return {
+    installments: targets,
+    allocations,
+    totalPaid,
+    discountAmount: 0,
+    balance,
+    endDate,
+    status,
+    closedAt: null,
+  };
+}
+
+/** State of a loan closed by an ACTIVE settlement payment (see the header). */
+function closedState(
+  loan: CalcLoan,
+  regular: CalcInstallment[],
+  makeups: CalcInstallment[],
+  paidById: Map<number, number>,
+  allocations: Allocation[],
+  totalPaid: number,
+  settlement: CalcPayment,
+): LoanState {
+  const targets: TargetInstallment[] = regular.map((row) => {
+    const amountPaid = paidById.get(row.id)!;
+    const fullyPaid = amountPaid >= row.amountDue;
+    return {
+      ...row,
+      amountPaid,
+      waivedAmount: fullyPaid ? 0 : row.amountDue - amountPaid,
+      status: fullyPaid ? 'paid' : 'settled',
+    };
+  });
+  const paidRegular = new Set(targets.filter((t) => t.status === 'paid').map((t) => t.id));
+  for (const m of makeups) {
+    targets.push({
+      ...m,
+      amountPaid: 0,
+      waivedAmount: 0, // the missed day's own row carries the waived money
+      status: paidRegular.has(m.makeupForInstallmentId) ? 'skipped' : 'settled',
+    });
+  }
+  targets.sort(byDueDate);
+
+  return {
+    installments: targets,
+    allocations,
+    totalPaid,
+    discountAmount: Math.max(0, loan.totalPayable - totalPaid),
+    balance: 0,
+    endDate: settlement.paidOn,
+    status: 'closed_early',
+    closedAt: settlement.paidOn,
+  };
 }
 
 // ───────────────────────── Summary ─────────────────────────
@@ -246,13 +336,17 @@ export interface LoanBalanceSummary {
 
 export function summarizeLoan(loan: CalcLoan, state: LoanState, today: string): LoanBalanceSummary {
   const regular = state.installments.filter((i) => !i.isMakeup);
-  const overdueAmount = regular
-    .filter((i) => i.dueDate < today)
-    .reduce((sum, i) => sum + (i.amountDue - i.amountPaid), 0);
+  const overdueAmount =
+    state.status === 'closed_early'
+      ? 0
+      : regular
+          .filter((i) => i.dueDate < today)
+          .reduce((sum, i) => sum + (i.amountDue - i.amountPaid - i.waivedAmount), 0);
   const baldaDays =
     loan.paymentType === 'daily' ? regular.filter((i) => i.status === 'missed').length : 0;
   const upcoming = state.installments.find(
-    (i) => i.status !== 'skipped' && i.status !== 'paid' && i.dueDate >= today,
+    (i) =>
+      i.status !== 'skipped' && i.status !== 'paid' && i.status !== 'settled' && i.dueDate >= today,
   );
   const lump = loan.paymentType === 'lump_sum' ? regular[0] : undefined;
   return {
