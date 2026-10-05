@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -11,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { t } from '@/i18n';
 import { CURRENCIES, saveProfile, type CurrencyCode } from '@/store/app-state';
 
 export default function SetupScreen() {
@@ -153,6 +155,16 @@ export default function SetupScreen() {
             onPress={onSave}
             className="items-center rounded-2xl bg-teal-700 py-4 active:bg-teal-800 dark:bg-teal-500">
             <Text className="text-lg font-semibold text-white">Save and Continue</Text>
+          </Pressable>
+
+          {/* New phone or reinstall: restore instead of setting up from scratch. */}
+          <Pressable
+            onPress={() => router.push('/backup/restore')}
+            accessibilityRole="button"
+            className="min-h-12 items-center justify-center active:opacity-60">
+            <Text className="text-base font-semibold text-teal-700 dark:text-teal-300">
+              {t('backup.restoreLink')}
+            </Text>
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>

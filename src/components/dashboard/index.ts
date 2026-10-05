@@ -1,3 +1,4 @@
+export { BackupReminderCard } from './BackupReminderCard';
 export { CashCard } from './CashCard';
 export { DueTodayRow } from './DueTodayRow';
 export { FlaggedBorrowerRow } from './FlaggedBorrowerRow';

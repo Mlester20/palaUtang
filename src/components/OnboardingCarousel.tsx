@@ -94,7 +94,14 @@ const TOP_BAR_HEIGHT = 56;
 const DOT = { inactive: 8, active: 24, height: 8 };
 
 /** The 3-slide intro. Used for first-run onboarding and for Settings → View intro again. */
-export function OnboardingCarousel({ onFinish }: { onFinish: () => void }) {
+export function OnboardingCarousel({
+  onFinish,
+  secondaryAction,
+}: {
+  onFinish: () => void;
+  /** Optional link under the main button (first run: "Restore from a backup"). */
+  secondaryAction?: { label: string; onPress: () => void };
+}) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const listRef = useRef<FlatList<SlideTheme>>(null);
@@ -293,6 +300,17 @@ export function OnboardingCarousel({ onFinish }: { onFinish: () => void }) {
             {isLast ? t('onboarding.getStarted') : t('onboarding.next')}
           </Text>
         </Pressable>
+        {secondaryAction && (
+          <Pressable
+            onPress={secondaryAction.onPress}
+            accessibilityRole="button"
+            hitSlop={8}
+            className="min-h-12 items-center justify-center active:opacity-60">
+            <Text style={{ fontFamily: fonts.semibold, fontSize: 15, color: current.colors.caption }}>
+              {secondaryAction.label}
+            </Text>
+          </Pressable>
+        )}
       </View>
     </View>
   );

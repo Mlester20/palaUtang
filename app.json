@@ -37,7 +37,8 @@
           "faceIDPermission": "Allow PeraHiram to use Face ID to unlock the app and protect your lending records."
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

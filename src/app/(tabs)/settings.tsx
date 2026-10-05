@@ -4,8 +4,10 @@ import { useSQLiteContext, type SQLiteDatabase } from 'expo-sqlite';
 import { useCallback, useState, type ReactNode } from 'react';
 import { Alert, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 
+import { lastBackupText } from '@/components/backup/backup-text';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Stepper } from '@/components/Stepper';
+import { countRows } from '@/db/backup';
 import { getCashSetup, type CashSetup } from '@/db/cash';
 import { resetDatabase } from '@/db/migrations';
 import { t, type TranslationKey } from '@/i18n';
@@ -19,6 +21,7 @@ import {
   unlockWithDevice,
   useAppLockSettings,
 } from '@/lib/appLock';
+import { hasData, isBackupStale } from '@/lib/backup';
 import { showError } from '@/lib/errors';
 import { formatDisplayDate } from '@/lib/loan';
 import { formatPeso } from '@/lib/money';
@@ -31,6 +34,8 @@ import {
   useAppState,
   type DefaultSettlementMode,
 } from '@/store/app-state';
+import { wipeBackupFiles } from '@/services/backup';
+import { clearBackupState, getBackupStatus, useBackupStatus } from '@/store/backup-state';
 import { clearFlagSettings, setFlagThresholds, useFlagThresholds } from '@/store/flag-settings';
 
 const GRACE_LABELS: Record<(typeof LOCK_GRACE_OPTIONS)[number], TranslationKey> = {
@@ -39,6 +44,31 @@ const GRACE_LABELS: Record<(typeof LOCK_GRACE_OPTIONS)[number], TranslationKey> 
   60: 'settings.lockAfter1m',
   300: 'settings.lockAfter5m',
 };
+
+/**
+ * Reset entry point: with data on the phone and no recent backup, warn first and offer
+ * "Back up first" before the usual confirmation.
+ */
+async function startReset(db: SQLiteDatabase) {
+  let needsWarning = false;
+  try {
+    const status = getBackupStatus();
+    needsWarning =
+      hasData(await countRows(db)) && isBackupStale(status.lastBackupAt, status.reminderDays, new Date());
+  } catch (error) {
+    console.error('[Reset pre-check failed]', error);
+    needsWarning = true;
+  }
+  if (!needsWarning) {
+    confirmReset(db);
+    return;
+  }
+  Alert.alert(t('backup.resetWarnTitle'), t('backup.resetWarnMessage'), [
+    { text: t('backup.cancel'), style: 'cancel' },
+    { text: t('backup.backUpFirst'), onPress: () => router.push('/backup') },
+    { text: t('backup.resetAnyway'), style: 'destructive', onPress: () => confirmReset(db) },
+  ]);
+}
 
 function confirmReset(db: SQLiteDatabase) {
   Alert.alert(
@@ -66,6 +96,9 @@ function confirmReset(db: SQLiteDatabase) {
           clearAppLockSettings();
           // Balda flag thresholds back to the defaults (3 and 7 days).
           clearFlagSettings();
+          // Last-backup info, reminder, restore marker, safety backups and temp files.
+          clearBackupState();
+          wipeBackupFiles();
           // No router.replace needed: the root layout guards close (tabs) and send the user
           // back to onboarding as soon as the profile is cleared, removing tabs from history.
           resetAppState();
@@ -285,6 +318,10 @@ export default function SettingsScreen() {
         <BaldaFlagSettings />
       </Section>
 
+      <Section title={t('backup.settingsSection')}>
+        <BackupSettingsRows />
+      </Section>
+
       <Section title="App">
         <Pressable
           onPress={() => router.push('/intro')}
@@ -304,7 +341,7 @@ export default function SettingsScreen() {
       </Section>
 
       <Pressable
-        onPress={() => confirmReset(db)}
+        onPress={() => startReset(db)}
         className="items-center rounded-2xl border border-red-300 bg-white py-4 active:bg-red-50 dark:border-red-900 dark:bg-slate-900 dark:active:bg-red-950">
         <Text className="text-base font-semibold text-red-600 dark:text-red-400">Reset app</Text>
       </Pressable>
@@ -385,6 +422,43 @@ function BaldaFlagSettings() {
           critical: daysText(saved.criticalAfter),
         })}
       </Text>
+    </>
+  );
+}
+
+function BackupSettingsRows() {
+  const colors = useThemeColors();
+  const status = useBackupStatus();
+  return (
+    <>
+      <View className="gap-1">
+        <Text className="text-base text-slate-600 dark:text-slate-300">{t('backup.lastBackupLabel')}</Text>
+        <Text
+          className={
+            status.lastBackupAt === null
+              ? 'text-base font-semibold text-amber-700 dark:text-amber-300'
+              : 'text-base font-semibold text-slate-900 dark:text-white'
+          }>
+          {lastBackupText(status.lastBackupAt)}
+        </Text>
+      </View>
+      {(
+        [
+          { icon: 'cloud-upload-outline', label: 'backup.openBackup', href: '/backup' },
+          { icon: 'refresh-circle-outline', label: 'backup.restoreButton', href: '/backup/restore' },
+          { icon: 'document-text-outline', label: 'backup.exportCsv', href: '/backup/export' },
+        ] as const
+      ).map((row) => (
+        <Pressable
+          key={row.href}
+          onPress={() => router.push(row.href)}
+          accessibilityRole="button"
+          className="min-h-12 flex-row items-center gap-3 active:opacity-60">
+          <Ionicons name={row.icon} size={22} color={colors.primary} />
+          <Text className="flex-1 text-base text-slate-900 dark:text-white">{t(row.label)}</Text>
+          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+        </Pressable>
+      ))}
     </>
   );
 }

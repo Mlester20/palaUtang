@@ -13,18 +13,30 @@ import { useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AppLockGate } from '@/components/AppLockGate';
+import { RestoreOverlay } from '@/components/backup/RestoreOverlay';
 import { ReconcileOnForeground } from '@/components/ReconcileOnForeground';
 import { DATABASE_NAME, migrateDbIfNeeded } from '@/db/migrations';
 import { reconcileAllActiveLoans } from '@/db/payments';
 import { t } from '@/i18n';
 import { todayYmd } from '@/lib/loan';
 import { useThemeColors } from '@/lib/theme';
+import { recoverInterruptedRestore } from '@/services/backup';
 import { useAppState } from '@/store/app-state';
+import { useDataGeneration } from '@/store/backup-state';
 
 SplashScreen.preventAutoHideAsync();
 
-/** Before any screen renders: migrate, then bring loans up to today (balda, make-ups). */
+/**
+ * Before any screen renders: finish/undo an interrupted restore (and clean temp files),
+ * migrate, then bring loans up to today (balda, make-ups).
+ */
 async function initDatabase(db: SQLiteDatabase) {
+  try {
+    const recovered = await recoverInterruptedRestore(db);
+    if (recovered === 'rolledBack') console.warn('[Restore] Unfinished restore rolled back');
+  } catch (error) {
+    console.error('[Restore recovery failed]', error);
+  }
   await migrateDbIfNeeded(db);
   try {
     await reconcileAllActiveLoans(db, todayYmd());
@@ -48,6 +60,8 @@ export default function RootLayout() {
     if (fontError) console.warn('[Fonts] Poppins failed to load; using the system font', fontError);
   }, [fontError]);
   const { hasCompletedOnboarding, profile } = useAppState();
+  // A restore bumps this: the provider (and every screen under it) remounts with fresh data.
+  const dataGeneration = useDataGeneration();
   const showOnboarding = !hasCompletedOnboarding;
   const hasProfile = profile !== null;
 
@@ -61,7 +75,7 @@ export default function RootLayout() {
       {fontsReady && (
         <AppLockGate>
           {/* Migrations run in onInit before any screen renders, so screens can always query. */}
-          <SQLiteProvider databaseName={DATABASE_NAME} onInit={initDatabase}>
+          <SQLiteProvider key={dataGeneration} databaseName={DATABASE_NAME} onInit={initDatabase}>
             <ReconcileOnForeground />
             <Stack
               screenOptions={{
@@ -119,13 +133,34 @@ export default function RootLayout() {
                   options={{ headerShown: true, title: t('cash.setupTitle') }}
                 />
                 <Stack.Screen
+                  name="backup/index"
+                  options={{ headerShown: true, title: t('backup.screenTitle') }}
+                />
+                <Stack.Screen
+                  name="backup/export"
+                  options={{ headerShown: true, title: t('backup.exportTitle') }}
+                />
+                <Stack.Screen
                   name="reports"
                   options={{ headerShown: true, title: t('reports.title') }}
                 />
                 {/* Settings → View intro again (same slides, no data or flags changed). */}
                 <Stack.Screen name="intro" />
               </Stack.Protected>
+              {/*
+                Restore is reachable from onboarding, setup and Settings. Registered LAST and
+                unguarded so it's always reachable via router.push — but ordering also decides
+                the fallback for the initial "/" when nothing matches (see the note above): put
+                first, it would hijack every cold launch into this screen instead of onboarding/
+                setup/tabs, which is exactly the bug this comment is warning about. Last keeps it
+                out of that race while still letting onboarding/setup push to it directly.
+              */}
+              <Stack.Screen
+                name="backup/restore"
+                options={{ headerShown: true, title: t('backup.restoreTitle') }}
+              />
             </Stack>
+            <RestoreOverlay />
           </SQLiteProvider>
         </AppLockGate>
       )}

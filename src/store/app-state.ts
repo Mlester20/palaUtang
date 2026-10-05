@@ -72,6 +72,11 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
+/** Current state outside React (e.g. right after a restore). */
+export function getAppStateSnapshot(): AppState {
+  return state;
+}
+
 export function useAppState(): AppState {
   return useSyncExternalStore(subscribe, () => state);
 }

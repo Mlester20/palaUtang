@@ -3,9 +3,11 @@ import { router } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { lastBackupText } from '@/components/backup/backup-text';
 import { CashSetupCard } from '@/components/cash/CashSetupCard';
 import { collectionChip } from '@/components/collection/collection-chip';
 import {
+  BackupReminderCard,
   CashCard,
   DueTodayRow,
   FlaggedBorrowerRow,
@@ -21,6 +23,7 @@ import { flagChipLabel, lastPaidText } from '@/components/flags/flag-text';
 import type { DashboardSnapshot } from '@/db/dashboard';
 import { useDashboard } from '@/hooks/use-dashboard';
 import { t, type TranslationKey } from '@/i18n';
+import { REMINDER_SNOOZE_MS, shouldShowBackupReminder } from '@/lib/backup';
 import { callPhone } from '@/lib/call';
 import { groupCollection, progressPercent } from '@/lib/collection';
 import { formatLongDate, mondayFirstDayIndex } from '@/lib/date';
@@ -29,6 +32,7 @@ import { parseYmd, todayYmd } from '@/lib/loan';
 import { formatPeso } from '@/lib/money';
 import { useThemeColors } from '@/lib/theme';
 import { useAppState } from '@/store/app-state';
+import { dismissReminderUntil, useBackupStatus } from '@/store/backup-state';
 import type { DailyEarning, DueTodayItem } from '@/types/dashboard';
 
 const ATTENTION_LIMIT = 5;
@@ -130,10 +134,27 @@ function Dashboard({
 }) {
   const { summary, stats, flagged } = data;
   const dueToday = dueTodayItems(data, thresholds);
+  const backup = useBackupStatus();
+  const now = new Date();
+  const showBackupReminder = shouldShowBackupReminder({
+    now,
+    hasAnyData: stats.borrowerCount > 0 || stats.loanCount > 0,
+    reminderDays: backup.reminderDays,
+    lastBackupAt: backup.lastBackupAt,
+    dismissedUntil: backup.reminderDismissedUntil,
+  });
 
   return (
     <>
       {stats.loanCount === 0 && <GetStartedCard hasBorrowers={stats.borrowerCount > 0} />}
+
+      {showBackupReminder && (
+        <BackupReminderCard
+          message={lastBackupText(backup.lastBackupAt, now)}
+          onBackup={() => router.push('/backup')}
+          onDismiss={() => dismissReminderUntil(Date.now() + REMINDER_SNOOZE_MS)}
+        />
+      )}
 
       {/* 2. Today's collection — the same summary function as the Collection tab */}
       <HeroCollectionCard
