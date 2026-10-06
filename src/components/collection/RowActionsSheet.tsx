@@ -15,6 +15,7 @@ type RowActionsSheetProps = {
   onCustom: (row: ClassifiedRow) => void;
   onCall: (row: ClassifiedRow) => void;
   onOpenLoan: (row: ClassifiedRow) => void;
+  onOpenCalendar: (row: ClassifiedRow) => void;
 };
 
 /** "More" actions for a collection row. */
@@ -25,6 +26,7 @@ export function RowActionsSheet({
   onCustom,
   onCall,
   onOpenLoan,
+  onOpenCalendar,
 }: RowActionsSheetProps) {
   // Today's amount = what is still owed for today, or one regular hulog when only overdue.
   const todayAmount = row
@@ -66,6 +68,11 @@ export function RowActionsSheet({
             icon="document-text-outline"
             label={t('collection.actionOpenLoan')}
             onPress={() => onOpenLoan(row)}
+          />
+          <Action
+            icon="calendar-outline"
+            label={t('calendar.openCalendar')}
+            onPress={() => onOpenCalendar(row)}
           />
           <Pressable
             onPress={onClose}

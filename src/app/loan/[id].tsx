@@ -15,7 +15,11 @@ import { ProgressBar } from '@/components/loans/ProgressBar';
 import { VoidPaymentModal } from '@/components/payments/VoidPaymentModal';
 import { ReceiptSheet } from '@/components/receipts/ReceiptSheet';
 import { StatementOptionsSheet } from '@/components/statements/StatementOptionsSheet';
+import { DayDetailSheet } from '@/components/calendar/DayDetailSheet';
+import { LoanCalendar } from '@/components/calendar/LoanCalendar';
+import { SegmentedControl } from '@/components/SegmentedControl';
 import { canCancelLoan, cancelLoan, getInstallmentsByLoan, getLoanById } from '@/db/loans';
+import { getLoanCalendarData } from '@/db/loanCalendar';
 import {
   getLoanBalanceSummary,
   getPaymentsByLoan,
@@ -33,10 +37,12 @@ import {
   formatShortDate,
   todayYmd,
 } from '@/lib/loan';
+import type { LoanCalendarResult } from '@/lib/loanCalendar';
 import { formatPeso } from '@/lib/money';
 import { useThemeColors } from '@/lib/theme';
 import type { LoanBalanceSummary } from '@/lib/payments';
 import { shareStatement } from '@/services/statement';
+import { setLoanView, useLoanView, type LoanView } from '@/store/loan-view-prefs';
 import type { Installment, LoanSummary, Payment } from '@/types/loan';
 
 type LoadedLoan = {
@@ -63,12 +69,20 @@ export default function LoanDetailScreen() {
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
   const colors = useThemeColors();
-  const id = Number(useLocalSearchParams<{ id: string }>().id);
+  const params = useLocalSearchParams<{ id: string; view?: string }>();
+  const id = Number(params.id);
   const [data, setData] = useState<LoadedLoan | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [voiding, setVoiding] = useState<Payment | null>(null);
   const [receiptPaymentId, setReceiptPaymentId] = useState<number | null>(null);
   const [statementSheetOpen, setStatementSheetOpen] = useState(false);
+  // The route's `view` param only decides the INITIAL tab; after that the user's own toggle wins.
+  const [viewOverride, setViewOverride] = useState<LoanView | null>(
+    params.view === 'calendar' || params.view === 'schedule' ? params.view : null,
+  );
+  const storedView = useLoanView();
+  const [calendarData, setCalendarData] = useState<LoanCalendarResult | null | undefined>(undefined);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const today = todayYmd();
 
   const load = useCallback(async () => {
@@ -99,6 +113,34 @@ export default function LoanDetailScreen() {
     }, [load]),
   );
 
+  // Daily loans default to Calendar, lump-sum to Schedule, unless the user already chose or a
+  // deep link (Collection → "Open calendar") asked for one explicitly.
+  const defaultView: LoanView = data?.loan.paymentType === 'daily' ? 'calendar' : 'schedule';
+  const activeView: LoanView = viewOverride ?? storedView ?? defaultView;
+  const changeView = (next: LoanView) => {
+    setViewOverride(next);
+    setLoanView(next);
+  };
+
+  // Calendar data is its own 3 queries (src/db/loanCalendar.ts), loaded only while that segment
+  // is shown, and on every focus (so a payment recorded elsewhere is reflected immediately).
+  // Changing the displayed MONTH never re-queries — LoanCalendar builds every month up front.
+  useFocusEffect(
+    useCallback(() => {
+      if (!data?.loan || activeView !== 'calendar') return;
+      let active = true;
+      getLoanCalendarData(db, id, today)
+        .then((result) => active && setCalendarData(result))
+        .catch((error) => {
+          console.error('[Load loan calendar failed]', error);
+          if (active) setCalendarData(null);
+        });
+      return () => {
+        active = false;
+      };
+    }, [db, id, today, data, activeView]),
+  );
+
   if (data === undefined) {
     return (
       <View className="flex-1 items-center justify-center bg-slate-50 dark:bg-slate-950">
@@ -126,6 +168,10 @@ export default function LoanDetailScreen() {
     .reduce((max, i) => (i.originalDueDate > max ? i.originalDueDate : max), loan.startDate);
   const profit = assessProfit(loan.principal, loan.totalPayable, loan.startDate, originalLastDue);
   const numberById = new Map(installments.map((i) => [i.id, i.installmentNumber]));
+  const missedDateById = new Map(
+    installments.filter((i) => !i.isMakeup).map((i) => [i.id, i.originalDueDate]),
+  );
+  const selectedCalendarDay = selectedDay ? calendarData?.days.get(selectedDay) ?? null : null;
 
   const onVoid = async (reason: string) => {
     if (!voiding) return;
@@ -481,9 +527,45 @@ export default function LoanDetailScreen() {
         )}
       </View>
 
-      <Text className="pt-2 text-xl font-bold text-slate-900 dark:text-white">
-        Schedule ({installments.length})
-      </Text>
+      <SegmentedControl
+        value={activeView}
+        onChange={changeView}
+        options={[
+          { value: 'schedule', label: t('calendar.segSchedule') },
+          { value: 'calendar', label: t('calendar.segCalendar') },
+        ]}
+      />
+
+      {activeView === 'calendar' &&
+        (calendarData === undefined ? (
+          <View className="items-center py-10">
+            <ActivityIndicator size="large" />
+          </View>
+        ) : calendarData === null ? (
+          <Text className="py-6 text-center text-base text-slate-500 dark:text-slate-400">
+            Could not load the calendar. Pull down to try again.
+          </Text>
+        ) : loan.status === 'cancelled' ? (
+          <View className="items-center gap-2 rounded-2xl bg-slate-100 p-6 dark:bg-slate-800">
+            <Ionicons name="ban-outline" size={28} color={colors.textMuted} />
+            <Text className="text-base font-bold text-slate-600 dark:text-slate-300">
+              {t('calendar.cancelledBanner')}
+            </Text>
+          </View>
+        ) : (
+          <LoanCalendar
+            result={calendarData}
+            paymentType={loan.paymentType}
+            today={today}
+            onDayPress={setSelectedDay}
+          />
+        ))}
+
+      {activeView === 'schedule' && (
+        <Text className="pt-2 text-xl font-bold text-slate-900 dark:text-white">
+          Schedule ({installments.length})
+        </Text>
+      )}
     </View>
   );
 
@@ -497,7 +579,7 @@ export default function LoanDetailScreen() {
           paddingTop: 16,
           paddingBottom: insets.bottom + 24,
         }}
-        sections={sections}
+        sections={activeView === 'schedule' ? sections : []}
         keyExtractor={(item) => String(item.id)}
         stickySectionHeadersEnabled
         ListHeaderComponent={header}
@@ -578,6 +660,23 @@ export default function LoanDetailScreen() {
         visible={statementSheetOpen}
         onClose={() => setStatementSheetOpen(false)}
         onGenerate={(options) => shareStatement(db, { loanId: loan.id }, options)}
+      />
+      <DayDetailSheet
+        day={selectedCalendarDay}
+        paymentType={loan.paymentType}
+        skipSundays={loan.skipSundays}
+        loanStatus={loan.status}
+        totalCount={loan.totalCount}
+        missedDateById={missedDateById}
+        onClose={() => setSelectedDay(null)}
+        onRecordPayment={(date) => {
+          setSelectedDay(null);
+          router.push({
+            pathname: '/payment/new',
+            params: { loanId: String(loan.id), paidOn: date },
+          });
+        }}
+        onReceipt={(paymentId) => setReceiptPaymentId(paymentId)}
       />
     </>
   );

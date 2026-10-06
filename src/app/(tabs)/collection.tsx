@@ -612,6 +612,13 @@ export default function CollectionScreen() {
           setActionsRow(null);
           openLoan(row.loanId);
         }}
+        onOpenCalendar={(row) => {
+          setActionsRow(null);
+          router.push({
+            pathname: '/loan/[id]',
+            params: { id: String(row.loanId), view: 'calendar' },
+          });
+        }}
       />
       <VoidPaymentModal
         visible={voiding !== null}

@@ -51,6 +51,7 @@ import {
   useDocumentSettings,
 } from '@/store/document-settings';
 import { clearFlagSettings, setFlagThresholds, useFlagThresholds } from '@/store/flag-settings';
+import { clearLoanViewPref } from '@/store/loan-view-prefs';
 
 const GRACE_LABELS: Record<(typeof LOCK_GRACE_OPTIONS)[number], TranslationKey> = {
   0: 'settings.lockAfterImmediately',
@@ -117,6 +118,8 @@ function confirmReset(db: SQLiteDatabase) {
           clearCollectionPrefs();
           // Receipt/statement settings (footer note, business phone/address, toggles, paper size).
           clearDocumentSettings();
+          // Loan detail's Schedule|Calendar preference (not part of any backup).
+          clearLoanViewPref();
           // No router.replace needed: the root layout guards close (tabs) and send the user
           // back to onboarding as soon as the profile is cleared, removing tabs from history.
           resetAppState();

@@ -43,12 +43,20 @@ const LINE_KIND: Record<PreviewLineKind, TranslationKey> = {
 export default function NewPaymentScreen() {
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ loanId: string; amount?: string; from?: string }>();
+  const params = useLocalSearchParams<{
+    loanId: string;
+    amount?: string;
+    from?: string;
+    paidOn?: string;
+  }>();
   const loanId = Number(params.loanId);
   // Optional prefill (centavos) when opened from the Collection tab's "Custom amount".
   const prefillCentavos = params.amount ? Number(params.amount) : null;
   const fromCollection = params.from === 'collection';
   const today = todayYmd();
+  // Optional prefill from the loan calendar's day sheet; a future date is never used (clamped
+  // to today), matching "a prefilled date = the tapped date when not in the future".
+  const initialPaidOn = params.paidOn && params.paidOn <= today ? params.paidOn : today;
 
   const [loan, setLoan] = useState<LoanSummary | null | undefined>(undefined);
   const [balance, setBalance] = useState(0);
@@ -57,7 +65,7 @@ export default function NewPaymentScreen() {
       ? String(prefillCentavos / 100)
       : '',
   );
-  const [paidOn, setPaidOn] = useState(today);
+  const [paidOn, setPaidOn] = useState(initialPaidOn);
   const [note, setNote] = useState('');
   // Tagged with the inputs it was computed for, so a stale preview is never shown or saved.
   const [previewState, setPreviewState] = useState<{
