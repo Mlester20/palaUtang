@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Text, View } from 'react-native';
 
 import { BorrowerForm } from '@/components/borrowers/BorrowerForm';
+import { getMostUsedAreas } from '@/db/areas';
 import { findBorrowersWithSameName, getBorrowerById, updateBorrower } from '@/db/borrowers';
 import type { Borrower } from '@/types/borrower';
 
@@ -11,6 +12,7 @@ export default function EditBorrowerScreen() {
   const db = useSQLiteContext();
   const id = Number(useLocalSearchParams<{ id: string }>().id);
   const [borrower, setBorrower] = useState<Borrower | null | undefined>(undefined);
+  const [areaSuggestions, setAreaSuggestions] = useState<string[]>([]);
 
   useEffect(() => {
     getBorrowerById(db, id)
@@ -19,6 +21,9 @@ export default function EditBorrowerScreen() {
         console.error('[Load borrower failed]', error);
         setBorrower(null);
       });
+    getMostUsedAreas(db)
+      .then(setAreaSuggestions)
+      .catch((error) => console.error('[Load areas failed]', error));
   }, [db, id]);
 
   if (borrower === undefined) {
@@ -43,6 +48,7 @@ export default function EditBorrowerScreen() {
     <BorrowerForm
       submitLabel="Save changes"
       initialValues={borrower}
+      areaSuggestions={areaSuggestions}
       countSameName={async (fullName) => (await findBorrowersWithSameName(db, fullName, id)).length}
       onSubmit={async (input) => {
         await updateBorrower(db, id, input);

@@ -17,6 +17,7 @@ type CollectionSqlRow = {
   borrower_name: string;
   nickname: string | null;
   phone: string | null;
+  area: string | null;
   payment_type: PaymentType;
   loan_status: LoanStatus;
   installment_amount: number;
@@ -80,6 +81,7 @@ const COLLECTION_SQL = `
          b.full_name AS borrower_name,
          b.nickname,
          b.phone,
+         b.area,
          l.payment_type,
          l.status AS loan_status,
          l.installment_amount,
@@ -106,6 +108,7 @@ function toRow(r: CollectionSqlRow): CollectionRow {
     borrowerName: r.borrower_name,
     nickname: r.nickname,
     phone: r.phone,
+    area: r.area,
     paymentType: r.payment_type,
     loanStatus: r.loan_status,
     installmentAmount: r.installment_amount,

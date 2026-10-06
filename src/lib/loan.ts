@@ -272,6 +272,29 @@ export function daysBetween(fromYmd: string, toYmd: string): number {
   );
 }
 
+/**
+ * COLLECTION days strictly after `fromYmd` up to and including `toYmd` (0 if toYmd <= fromYmd),
+ * skipping Sundays when `skipSundays`. Used for "how many collection days late" (reliability,
+ * src/lib/reliability.ts): due Saturday, paid Monday → 1 (the Sunday between them isn't a
+ * collection day); due Oct 5, paid Oct 7 with no Sunday between → 2.
+ *
+ * Closed-form (not a day-by-day loop): a defaulted loan can be very late, and reliability scans
+ * up to 60 installments per borrower, so an O(days-late) loop was measured to turn a 200-
+ * borrower scan into several SECONDS. Sundays in (fromYmd, toYmd] are counted directly from the
+ * calendar-day span instead.
+ */
+export function collectionDaysBetween(fromYmd: string, toYmd: string, skipSundays: boolean): number {
+  if (toYmd <= fromYmd) return 0;
+  const calendarDays = daysBetween(fromYmd, toYmd);
+  if (!skipSundays) return calendarDays;
+  const fromDow = parseYmd(fromYmd).getDay(); // 0 = Sunday
+  // Days from `from` to the first Sunday strictly after it (7 when `from` is itself a Sunday).
+  const toFirstSunday = fromDow === 0 ? 7 : 7 - fromDow;
+  if (calendarDays < toFirstSunday) return calendarDays; // no Sunday falls in (from, to]
+  const sundaysInRange = Math.floor((calendarDays - toFirstSunday) / 7) + 1;
+  return calendarDays - sundaysInRange;
+}
+
 export type ProfitLevel = 'loss' | 'none' | 'normal' | 'high';
 
 export interface ProfitCheck {

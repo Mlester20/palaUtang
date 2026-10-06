@@ -5,10 +5,13 @@ import { useCallback, useState, type ReactNode } from 'react';
 import { Alert, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 
 import { lastBackupText } from '@/components/backup/backup-text';
+import { FormField } from '@/components/FormField';
+import { ReceiptSheet } from '@/components/receipts/ReceiptSheet';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Stepper } from '@/components/Stepper';
 import { countRows } from '@/db/backup';
 import { getCashSetup, type CashSetup } from '@/db/cash';
+import { getLatestActivePaymentId } from '@/db/documents';
 import { resetDatabase } from '@/db/migrations';
 import { t, type TranslationKey } from '@/i18n';
 import {
@@ -26,6 +29,7 @@ import { showError } from '@/lib/errors';
 import { formatDisplayDate } from '@/lib/loan';
 import { formatPeso } from '@/lib/money';
 import { FLAG_THRESHOLD_LIMITS, validateThresholds, type FlagThresholds } from '@/lib/flags';
+import { sampleReceiptData } from '@/lib/receipt';
 import { useThemeColors } from '@/lib/theme';
 import {
   CURRENCIES,
@@ -36,6 +40,16 @@ import {
 } from '@/store/app-state';
 import { wipeBackupFiles } from '@/services/backup';
 import { clearBackupState, getBackupStatus, useBackupStatus } from '@/store/backup-state';
+import { clearCollectionPrefs } from '@/store/collection-prefs';
+import {
+  clearDocumentSettings,
+  FOOTER_NOTE_MAX_LENGTH,
+  setBusinessAddress,
+  setBusinessPhone,
+  setFooterNote,
+  setShowBalance,
+  useDocumentSettings,
+} from '@/store/document-settings';
 import { clearFlagSettings, setFlagThresholds, useFlagThresholds } from '@/store/flag-settings';
 
 const GRACE_LABELS: Record<(typeof LOCK_GRACE_OPTIONS)[number], TranslationKey> = {
@@ -99,6 +113,10 @@ function confirmReset(db: SQLiteDatabase) {
           // Last-backup info, reminder, restore marker, safety backups and temp files.
           clearBackupState();
           wipeBackupFiles();
+          // Collection tab's Group by preference (not part of any backup).
+          clearCollectionPrefs();
+          // Receipt/statement settings (footer note, business phone/address, toggles, paper size).
+          clearDocumentSettings();
           // No router.replace needed: the root layout guards close (tabs) and send the user
           // back to onboarding as soon as the profile is cleared, removing tabs from history.
           resetAppState();
@@ -322,6 +340,38 @@ export default function SettingsScreen() {
         <BackupSettingsRows />
       </Section>
 
+      <Section title={t('areas.settingsSection')}>
+        <Pressable
+          onPress={() => router.push('/areas')}
+          accessibilityRole="button"
+          className="min-h-12 flex-row items-center gap-3 active:opacity-60">
+          <Ionicons name="map-outline" size={22} color={colors.primary} />
+          <View className="flex-1 gap-1">
+            <Text className="text-base text-slate-900 dark:text-white">{t('areas.manage')}</Text>
+            <Text className="text-sm text-slate-600 dark:text-slate-400">{t('areas.manageHint')}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+        </Pressable>
+      </Section>
+
+      <Section title={t('presets.settingsSection')}>
+        <Pressable
+          onPress={() => router.push('/presets')}
+          accessibilityRole="button"
+          className="min-h-12 flex-row items-center gap-3 active:opacity-60">
+          <Ionicons name="bookmark-outline" size={22} color={colors.primary} />
+          <View className="flex-1 gap-1">
+            <Text className="text-base text-slate-900 dark:text-white">{t('presets.manage')}</Text>
+            <Text className="text-sm text-slate-600 dark:text-slate-400">{t('presets.manageHint')}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+        </Pressable>
+      </Section>
+
+      <Section title={t('receipts.settingsSection')}>
+        <ReceiptSettingsRows />
+      </Section>
+
       <Section title="App">
         <Pressable
           onPress={() => router.push('/intro')}
@@ -459,6 +509,92 @@ function BackupSettingsRows() {
           <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
         </Pressable>
       ))}
+    </>
+  );
+}
+
+/**
+ * Footer note / business phone / business address are edited as local drafts and saved onBlur
+ * (not on every keystroke): saving mid-typing would trim/slice the value under the user's cursor.
+ */
+function ReceiptSettingsRows() {
+  const db = useSQLiteContext();
+  const colors = useThemeColors();
+  const { profile } = useAppState();
+  const settings = useDocumentSettings();
+  const [footerDraft, setFooterDraft] = useState(settings.footerNote ?? '');
+  const [phoneDraft, setPhoneDraft] = useState(settings.businessPhone ?? '');
+  const [addressDraft, setAddressDraft] = useState(settings.businessAddress ?? '');
+  const [previewPaymentId, setPreviewPaymentId] = useState<number | null>(null);
+  const [previewSample, setPreviewSample] = useState<ReturnType<typeof sampleReceiptData> | null>(
+    null,
+  );
+
+  const openPreview = async () => {
+    try {
+      const latest = await getLatestActivePaymentId(db);
+      if (latest) setPreviewPaymentId(latest);
+      else setPreviewSample(sampleReceiptData(profile?.businessName ?? ''));
+    } catch (error) {
+      showError(t('receipts.generateFailed'), error);
+    }
+  };
+
+  return (
+    <>
+      <FormField
+        label={t('receipts.footerNoteLabel')}
+        hint={t('receipts.footerNoteHint')}
+        value={footerDraft}
+        onChangeText={setFooterDraft}
+        onBlur={() => setFooterNote(footerDraft)}
+        maxLength={FOOTER_NOTE_MAX_LENGTH}
+        multiline
+      />
+      <FormField
+        label={t('receipts.businessPhoneLabel')}
+        value={phoneDraft}
+        onChangeText={setPhoneDraft}
+        onBlur={() => setBusinessPhone(phoneDraft)}
+        keyboardType="phone-pad"
+      />
+      <FormField
+        label={t('receipts.businessAddressLabel')}
+        value={addressDraft}
+        onChangeText={setAddressDraft}
+        onBlur={() => setBusinessAddress(addressDraft)}
+        multiline
+      />
+      <View className="min-h-12 flex-row items-center justify-between gap-4">
+        <View className="flex-1 gap-1">
+          <Text className="text-base text-slate-900 dark:text-white">
+            {t('receipts.showBalanceLabel')}
+          </Text>
+          <Text className="text-sm text-slate-600 dark:text-slate-400">
+            {t('receipts.showBalanceHint')}
+          </Text>
+        </View>
+        <Switch
+          value={settings.showBalance}
+          onValueChange={setShowBalance}
+          trackColor={{ true: colors.primary, false: '#cbd5e1' }}
+          thumbColor="#ffffff"
+        />
+      </View>
+      <Pressable
+        onPress={openPreview}
+        accessibilityRole="button"
+        className="min-h-12 items-center justify-center rounded-xl bg-teal-700 active:bg-teal-800 dark:bg-teal-500">
+        <Text className="text-base font-bold text-white">{t('receipts.preview')}</Text>
+      </Pressable>
+      <ReceiptSheet
+        paymentId={previewPaymentId}
+        sampleData={previewSample}
+        onClose={() => {
+          setPreviewPaymentId(null);
+          setPreviewSample(null);
+        }}
+      />
     </>
   );
 }

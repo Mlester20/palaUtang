@@ -24,6 +24,7 @@ import { RowActionsSheet } from '@/components/collection/RowActionsSheet';
 import { UndoSnackbar } from '@/components/collection/UndoSnackbar';
 import { EmptyState } from '@/components/empty-state';
 import { VoidPaymentModal } from '@/components/payments/VoidPaymentModal';
+import { ReceiptSheet } from '@/components/receipts/ReceiptSheet';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { getCashSummary, type CashSummary } from '@/db/cash';
 import {
@@ -41,9 +42,13 @@ import {
 } from '@/db/payments';
 import { t, type TranslationKey } from '@/i18n';
 import {
+  areaFilterOptions,
+  groupByArea,
   groupCollection,
+  matchesAreaFilter,
   summarizeCollection,
   type ClassifiedRow,
+  type CollectionAreaFilter,
   type CollectionFilter,
 } from '@/lib/collection';
 import { showError } from '@/lib/errors';
@@ -52,6 +57,7 @@ import { formatPeso } from '@/lib/money';
 import type { PaymentPreview } from '@/lib/payments';
 import { useThemeColors } from '@/lib/theme';
 import { setCollectionBadge } from '@/store/collection-badge';
+import { useCollectionGroupBy, setCollectionGroupBy } from '@/store/collection-prefs';
 import { useFlagThresholds } from '@/store/flag-settings';
 
 type Segment = 'collect' | 'collected';
@@ -70,7 +76,7 @@ const SECTION_TITLE: Record<SectionKey, TranslationKey> = {
   paid: 'collection.sectionPaid',
 };
 
-type Snack = { key: number; text: string; canUndo: boolean; paymentId?: number };
+type Snack = { key: number; text: string; canUndo: boolean; canReceipt?: boolean; paymentId?: number };
 
 export default function CollectionScreen() {
   const db = useSQLiteContext();
@@ -88,6 +94,9 @@ export default function CollectionScreen() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<CollectionFilter>('all');
   const [paidExpanded, setPaidExpanded] = useState(false);
+  const groupBy = useCollectionGroupBy();
+  // Area filter is a one-visit-only choice (not remembered after leaving the screen).
+  const [areaFilter, setAreaFilter] = useState<CollectionAreaFilter>('all');
 
   // Collect flow
   const [sheet, setSheet] = useState<{ row: ClassifiedRow; amount: number } | null>(null);
@@ -98,6 +107,7 @@ export default function CollectionScreen() {
   const [actionsRow, setActionsRow] = useState<ClassifiedRow | null>(null);
   const [snack, setSnack] = useState<Snack | null>(null);
   const [undoing, setUndoing] = useState(false);
+  const [receiptPaymentId, setReceiptPaymentId] = useState<number | null>(null);
 
   // Collected segment
   const [collectedDate, setCollectedDate] = useState<string | null>(null); // null = today
@@ -180,6 +190,7 @@ export default function CollectionScreen() {
         key: Date.now(),
         text: t('collection.recordedToast', { amount: formatPeso(amount), name: row.borrowerName }),
         canUndo: true,
+        canReceipt: true,
         paymentId,
       });
       await load();
@@ -196,7 +207,7 @@ export default function CollectionScreen() {
     setUndoing(true);
     try {
       await voidPayment(db, snack.paymentId, t('collection.undoReason'), todayYmd());
-      setSnack({ key: Date.now(), text: t('collection.undoneToast'), canUndo: false });
+      setSnack({ key: Date.now(), text: t('collection.undoneToast'), canUndo: false, canReceipt: false });
       await load();
     } catch (error) {
       showError(t('collection.undoFailed'), error);
@@ -205,6 +216,9 @@ export default function CollectionScreen() {
     }
   };
   const hideSnack = useCallback(() => setSnack(null), []);
+  const onReceiptFromSnack = useCallback(() => {
+    if (snack?.paymentId) setReceiptPaymentId(snack.paymentId);
+  }, [snack]);
 
   // ── Row actions ──
   const openLoan = useCallback((loanId: number) => {
@@ -252,22 +266,53 @@ export default function CollectionScreen() {
 
   // ── Derived ──
   const summary = summarizeCollection(rows ?? []);
-  const groups = groupCollection(rows ?? [], filter, query);
-  const searching = query.trim() !== '' || filter !== 'all';
-  const sections = (
-    [
-      { key: 'overdue' as const, rows: groups.overdue },
-      { key: 'dueToday' as const, rows: groups.dueToday },
-      { key: 'paid' as const, rows: groups.paid },
-    ] satisfies { key: SectionKey; rows: ClassifiedRow[] }[]
-  )
-    .filter((s) => s.rows.length > 0)
-    .map((s) => ({
-      key: s.key,
-      count: s.rows.length,
-      data: s.key === 'paid' && !paidExpanded ? [] : s.rows,
-    }));
+  const groups = groupCollection(rows ?? [], filter, query, areaFilter);
+  const areaGroups = groupByArea(rows ?? [], filter, query, areaFilter);
+  const areaOptions = areaFilterOptions(rows ?? []);
+  const searching = query.trim() !== '' || filter !== 'all' || areaFilter !== 'all';
+  type ListRow = { row: ClassifiedRow; dimmed: boolean };
+  type ListSection = { key: string; title: string; subtitle?: string; data: ListRow[] };
+  const sections: ListSection[] =
+    groupBy === 'status'
+      ? (
+          [
+            { key: 'overdue' as const, rows: groups.overdue },
+            { key: 'dueToday' as const, rows: groups.dueToday },
+            { key: 'paid' as const, rows: groups.paid },
+          ] satisfies { key: SectionKey; rows: ClassifiedRow[] }[]
+        )
+          .filter((s) => s.rows.length > 0)
+          .map((s) => ({
+            key: s.key,
+            title: `${t(SECTION_TITLE[s.key])} (${s.rows.length})`,
+            data:
+              s.key === 'paid' && !paidExpanded
+                ? []
+                : s.rows.map((row) => ({ row, dimmed: false })),
+          }))
+      : areaGroups
+          .filter((s) => s.toCollectCount > 0 || (paidExpanded && s.paidRows.length > 0))
+          .map((s) => ({
+            key: s.area ?? '\u0000no-area',
+            title: s.area ?? t('collection.noArea'),
+            subtitle: t('collection.areaSubtotal', {
+              count: s.toCollectCount,
+              amount: formatPeso(s.toCollectAmount),
+            }),
+            data: [
+              ...s.rows.map((row) => ({ row, dimmed: false })),
+              ...(paidExpanded ? s.paidRows.map((row) => ({ row, dimmed: true })) : []),
+            ],
+          }));
   const nothingToCollect = groups.overdue.length === 0 && groups.dueToday.length === 0;
+  const totalPaidCount =
+    groupBy === 'status' ? groups.paid.length : areaGroups.reduce((s, a) => s + a.paidRows.length, 0);
+  // Subtotal for the active area filter, from the SAME summarizeCollection function as the
+  // global card — just scoped to that area's rows.
+  const areaSubtotal =
+    areaFilter !== 'all'
+      ? summarizeCollection((rows ?? []).filter((r) => matchesAreaFilter(r, areaFilter)))
+      : null;
 
   const header = (
     <View className="gap-4 pb-1 pt-4">
@@ -320,11 +365,12 @@ export default function CollectionScreen() {
           onRefresh={onRefresh}
           onVoid={setVoiding}
           onOpenLoan={openLoan}
+          onReceipt={setReceiptPaymentId}
         />
       ) : (
         <SectionList
           sections={sections}
-          keyExtractor={(item) => String(item.loanId)}
+          keyExtractor={(item) => String(item.row.loanId)}
           keyboardShouldPersistTaps="handled"
           stickySectionHeadersEnabled={false}
           contentContainerClassName="gap-3 px-5 pb-28"
@@ -350,6 +396,15 @@ export default function CollectionScreen() {
               )}
               {activeLoans > 0 && (
                 <>
+                  <SegmentedControl
+                    label={t('collection.groupByLabel')}
+                    value={groupBy}
+                    onChange={setCollectionGroupBy}
+                    options={[
+                      { value: 'status', label: t('collection.groupByStatus') },
+                      { value: 'area', label: t('collection.groupByArea') },
+                    ]}
+                  />
                   <View className="min-h-14 flex-row items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 dark:border-slate-700 dark:bg-slate-900">
                     <Ionicons name="search" size={20} color={colors.textMuted} />
                     <TextInput
@@ -387,6 +442,71 @@ export default function CollectionScreen() {
                       );
                     })}
                   </View>
+                  {areaOptions.length > 0 && (
+                    <View className="flex-row flex-wrap gap-2">
+                      {(['all', ...areaOptions.map((a) => a.area ?? 'none')] as CollectionAreaFilter[]).map(
+                        (value) => {
+                          const selected = areaFilter === value;
+                          const option = areaOptions.find((a) => (a.area ?? 'none') === value);
+                          const label =
+                            value === 'all'
+                              ? t('collection.areaAll')
+                              : value === 'none'
+                                ? `${t('collection.noArea')} (${option?.toCollectCount ?? 0})`
+                                : `${value} (${option?.toCollectCount ?? 0})`;
+                          return (
+                            <Pressable
+                              key={value}
+                              onPress={() => setAreaFilter(value)}
+                              accessibilityRole="radio"
+                              accessibilityState={{ selected }}
+                              className={
+                                selected
+                                  ? 'min-h-10 justify-center rounded-full bg-teal-700 px-3 dark:bg-teal-500'
+                                  : 'min-h-10 justify-center rounded-full border border-slate-300 bg-white px-3 active:opacity-70 dark:border-slate-700 dark:bg-slate-900'
+                              }>
+                              <Text
+                                className={
+                                  selected
+                                    ? 'text-sm font-bold text-white'
+                                    : 'text-sm font-semibold text-slate-700 dark:text-slate-200'
+                                }
+                                numberOfLines={1}>
+                                {label}
+                              </Text>
+                            </Pressable>
+                          );
+                        },
+                      )}
+                    </View>
+                  )}
+                  {areaSubtotal && (
+                    <View className="flex-row items-center justify-between rounded-xl bg-white px-4 py-3 dark:bg-slate-900">
+                      <Text className="text-sm text-slate-600 dark:text-slate-300">
+                        {t('collection.areaSubtotalLine', {
+                          collected: formatPeso(areaSubtotal.collectedToday),
+                          remaining: formatPeso(areaSubtotal.remaining),
+                        })}
+                      </Text>
+                    </View>
+                  )}
+                  {groupBy === 'area' && totalPaidCount > 0 && (
+                    <Pressable
+                      onPress={() => setPaidExpanded((v) => !v)}
+                      accessibilityRole="button"
+                      className="min-h-11 flex-row items-center justify-end gap-1 px-1 active:opacity-60">
+                      <Text className="text-base font-semibold text-teal-700 dark:text-teal-300">
+                        {paidExpanded
+                          ? t('collection.hide')
+                          : `${t('collection.show')} ${t('collection.sectionPaid')} (${totalPaidCount})`}
+                      </Text>
+                      <Ionicons
+                        name={paidExpanded ? 'chevron-up' : 'chevron-down'}
+                        size={18}
+                        color={colors.primary}
+                      />
+                    </Pressable>
+                  )}
                   {nothingToCollect && !searching && (
                     <View className="items-center gap-1 rounded-2xl bg-green-50 p-5 dark:bg-green-950">
                       <Ionicons name="checkmark-circle" size={40} color={colors.success} />
@@ -429,10 +549,17 @@ export default function CollectionScreen() {
           }
           renderSectionHeader={({ section }) => (
             <View className="flex-row items-center justify-between pt-3">
-              <Text className="text-lg font-bold text-slate-900 dark:text-white">
-                {t(SECTION_TITLE[section.key])} ({section.count})
-              </Text>
-              {section.key === 'paid' && (
+              <View className="flex-1">
+                <Text className="text-lg font-bold text-slate-900 dark:text-white">
+                  {section.title}
+                </Text>
+                {section.subtitle && (
+                  <Text className="text-sm text-slate-600 dark:text-slate-400">
+                    {section.subtitle}
+                  </Text>
+                )}
+              </View>
+              {groupBy === 'status' && section.key === 'paid' && (
                 <Pressable
                   onPress={() => setPaidExpanded((v) => !v)}
                   accessibilityRole="button"
@@ -451,15 +578,17 @@ export default function CollectionScreen() {
             </View>
           )}
           renderItem={({ item }) => (
-            <CollectionRowItem
-              row={item}
-              busy={saving}
-              onCollect={onCollect}
-              onMore={onMore}
-              onOpen={onOpenRow}
-              today={today}
-              thresholds={thresholds}
-            />
+            <View className={item.dimmed ? 'opacity-50' : undefined}>
+              <CollectionRowItem
+                row={item.row}
+                busy={saving}
+                onCollect={onCollect}
+                onMore={onMore}
+                onOpen={onOpenRow}
+                today={today}
+                thresholds={thresholds}
+              />
+            </View>
           )}
         />
       )}
@@ -492,7 +621,14 @@ export default function CollectionScreen() {
         onCancel={() => setVoiding(null)}
         onConfirm={confirmVoid}
       />
-      <UndoSnackbar message={snack} undoing={undoing} onUndo={undo} onHide={hideSnack} />
+      <UndoSnackbar
+        message={snack}
+        undoing={undoing}
+        onUndo={undo}
+        onHide={hideSnack}
+        onReceipt={onReceiptFromSnack}
+      />
+      <ReceiptSheet paymentId={receiptPaymentId} onClose={() => setReceiptPaymentId(null)} />
     </View>
   );
 }

@@ -3,6 +3,8 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { normalizePhPhone } from '@/lib/phone';
 import type { Borrower, BorrowerInput, GetBorrowersOptions } from '@/types/borrower';
 
+import { resolveArea } from './areas';
+
 type BorrowerRow = {
   id: number;
   full_name: string;
@@ -10,13 +12,14 @@ type BorrowerRow = {
   phone: string | null;
   address: string | null;
   notes: string | null;
+  area: string | null;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
 };
 
 const COLUMNS =
-  'id, full_name, nickname, phone, address, notes, archived_at, created_at, updated_at';
+  'id, full_name, nickname, phone, address, notes, area, archived_at, created_at, updated_at';
 
 function toBorrower(row: BorrowerRow): Borrower {
   return {
@@ -26,6 +29,7 @@ function toBorrower(row: BorrowerRow): Borrower {
     phone: row.phone,
     address: row.address,
     notes: row.notes,
+    area: row.area,
     archivedAt: row.archived_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -56,29 +60,34 @@ function likePattern(search: string) {
   return `%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
 
-/** Active borrowers (optionally archived too), A–Z. Search matches name, nickname or phone. */
+/**
+ * Active borrowers (optionally archived too), A–Z. Search matches name, nickname, phone or
+ * area. `area` filters to that exact area (case-insensitive); pass '' for "No area".
+ */
 export async function getBorrowers(
   db: SQLiteDatabase,
-  { search = '', includeArchived = false }: GetBorrowersOptions = {},
+  { search = '', includeArchived = false, area }: GetBorrowersOptions = {},
 ): Promise<Borrower[]> {
   const term = search.trim();
   // Phone numbers are stored without spaces/dashes, so search them the same way.
   const phoneTerm = normalizePhPhone(term);
   const rows = await db.getAllAsync<BorrowerRow>(
     `SELECT ${COLUMNS} FROM borrowers
-     WHERE (? = 1 OR archived_at IS NULL)
-       AND (? = ''
-         OR full_name LIKE ? ESCAPE '\\'
-         OR nickname LIKE ? ESCAPE '\\'
-         OR phone LIKE ? ESCAPE '\\')
+     WHERE ($includeArchived = 1 OR archived_at IS NULL)
+       AND ($term = ''
+         OR full_name LIKE $namePattern ESCAPE '\\'
+         OR nickname LIKE $namePattern ESCAPE '\\'
+         OR phone LIKE $phonePattern ESCAPE '\\'
+         OR area LIKE $namePattern ESCAPE '\\')
+       AND ($area IS NULL OR ($area = '' AND area IS NULL) OR lower(area) = lower($area))
      ORDER BY full_name COLLATE NOCASE ASC, id ASC`,
-    [
-      includeArchived ? 1 : 0,
-      term,
-      likePattern(term),
-      likePattern(term),
-      likePattern(phoneTerm || term),
-    ],
+    {
+      $includeArchived: includeArchived ? 1 : 0,
+      $term: term,
+      $namePattern: likePattern(term),
+      $phonePattern: likePattern(phoneTerm || term),
+      $area: area ?? null,
+    },
   );
   return rows.map(toBorrower);
 }
@@ -107,22 +116,24 @@ export async function findBorrowersWithSameName(
 /** Returns the new borrower's id. */
 export async function createBorrower(db: SQLiteDatabase, input: BorrowerInput): Promise<number> {
   const p = toParams(input);
+  const area = await resolveArea(db, input.area);
   const now = new Date().toISOString();
   const result = await db.runAsync(
-    `INSERT INTO borrowers (full_name, nickname, phone, address, notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [p.fullName, p.nickname, p.phone, p.address, p.notes, now, now],
+    `INSERT INTO borrowers (full_name, nickname, phone, address, notes, area, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [p.fullName, p.nickname, p.phone, p.address, p.notes, area, now, now],
   );
   return result.lastInsertRowId;
 }
 
 export async function updateBorrower(db: SQLiteDatabase, id: number, input: BorrowerInput) {
   const p = toParams(input);
+  const area = await resolveArea(db, input.area);
   const result = await db.runAsync(
     `UPDATE borrowers
-     SET full_name = ?, nickname = ?, phone = ?, address = ?, notes = ?, updated_at = ?
+     SET full_name = ?, nickname = ?, phone = ?, address = ?, notes = ?, area = ?, updated_at = ?
      WHERE id = ?`,
-    [p.fullName, p.nickname, p.phone, p.address, p.notes, new Date().toISOString(), id],
+    [p.fullName, p.nickname, p.phone, p.address, p.notes, area, new Date().toISOString(), id],
   );
   if (result.changes === 0) throw new Error('Borrower not found.');
 }

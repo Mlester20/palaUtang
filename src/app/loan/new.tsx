@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useRef, useState } from 'react';
@@ -19,15 +20,21 @@ import { FormField } from '@/components/FormField';
 import { InitialsAvatar } from '@/components/dashboard';
 import { BorrowerPicker } from '@/components/loans/BorrowerPicker';
 import { LoanPreviewCard } from '@/components/loans/LoanPreviewCard';
+import { PresetChips } from '@/components/loans/PresetChips';
 import { ProfitCheckCard } from '@/components/loans/ProfitCheckCard';
+import { SavePresetSheet } from '@/components/loans/SavePresetSheet';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { getBorrowerById, getBorrowers } from '@/db/borrowers';
+import { getBorrowerFlag } from '@/db/flags';
 import { createLoanWithSchedule } from '@/db/loans';
+import { getPresets } from '@/db/presets';
+import { getBorrowerReliability } from '@/db/reliability';
 import { previewSettlement, settleAndRenew } from '@/db/settlement';
 import { settleErrorText } from '@/components/loans/settlement-messages';
 import { t } from '@/i18n';
 import { showError } from '@/lib/errors';
-import { computeRenewal } from '@/lib/settlement';
+import type { BorrowerFlag } from '@/lib/flags';
+import { money } from '@/lib/csv';
 import {
   assessProfit,
   computeLoanPreview,
@@ -40,7 +47,11 @@ import {
   type PaymentType,
 } from '@/lib/loan';
 import { formatPeso, parsePesoToCentavos } from '@/lib/money';
+import type { LoanPreset } from '@/lib/presets';
+import type { ReliabilityResult } from '@/lib/reliability';
+import { computeRenewal } from '@/lib/settlement';
 import { useThemeColors } from '@/lib/theme';
+import { useFlagThresholds } from '@/store/flag-settings';
 import type { Borrower } from '@/types/borrower';
 import type { SettlementMode } from '@/types/loan';
 
@@ -142,6 +153,69 @@ export default function NewLoanScreen() {
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
+
+  // ── Presets (PART A2) ──
+  const thresholds = useFlagThresholds();
+  const [presets, setPresets] = useState<LoanPreset[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<number | null>(null);
+  // Whether the CURRENT principal value came from the applied preset (only then does editing
+  // it also drop back to Custom; a preset that left the principal open never controls it).
+  const [presetControlledPrincipal, setPresetControlledPrincipal] = useState(false);
+  const [savePresetVisible, setSavePresetVisible] = useState(false);
+
+  useEffect(() => {
+    getPresets(db)
+      .then(setPresets)
+      .catch((error) => console.error('[Load presets failed]', error));
+  }, [db]);
+
+  const applyPreset = (preset: LoanPreset) => {
+    setSelectedPresetId(preset.id);
+    setPaymentType(preset.paymentType);
+    setMode(preset.inputMode);
+    setSkipSundays(preset.paymentType === 'daily' ? preset.skipSundays : false);
+    setTermText(String(preset.numberOfInstallments));
+    setRateText(
+      preset.inputMode === 'rate' && preset.interestRate !== null ? String(preset.interestRate) : '',
+    );
+    setAmountText(
+      preset.inputMode === 'installment' && preset.installmentAmount !== null
+        ? money(preset.installmentAmount)!.csvNumber
+        : '',
+    );
+    const hasPrincipal = preset.principal !== null;
+    setPresetControlledPrincipal(hasPrincipal);
+    if (hasPrincipal) setPrincipalText(money(preset.principal!)!.csvNumber);
+  };
+
+  /** Any manual edit to a preset-controlled field drops the form back to "Custom". */
+  const unapplyPreset = () => setSelectedPresetId(null);
+
+  // ── Borrower reliability / overdue banner (PART B) ──
+  const [borrowerFlag, setBorrowerFlag] = useState<BorrowerFlag | null>(null);
+  const [borrowerReliability, setBorrowerReliability] = useState<ReliabilityResult | null>(null);
+  useEffect(() => {
+    let active = true;
+    const today = todayYmd();
+    // Always resolve through a promise (even the "no borrower" case), so the state update
+    // never happens synchronously inside the effect body.
+    const task = borrower
+      ? Promise.all([
+          getBorrowerFlag(db, borrower.id, today, thresholds),
+          getBorrowerReliability(db, borrower.id, today, thresholds),
+        ])
+      : Promise.resolve([null, null] as const);
+    task
+      .then(([f, r]) => {
+        if (!active) return;
+        setBorrowerFlag(f);
+        setBorrowerReliability(r);
+      })
+      .catch((error) => console.error('[Load borrower risk info failed]', error));
+    return () => {
+      active = false;
+    };
+  }, [db, borrower, thresholds]);
 
   const isDaily = paymentType === 'daily';
   const principal = parsePesoToCentavos(principalText);
@@ -395,6 +469,31 @@ export default function NewLoanScreen() {
             )}
           </View>
 
+          {/* Risky rating or an overdue balance right now — informational, never blocks saving. */}
+          {borrowerReliability?.tier === 'risky' ? (
+            <View className="flex-row gap-3 rounded-2xl border-2 border-red-300 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950">
+              <Ionicons name="alert-circle" size={22} color={colors.danger} />
+              <Text className="flex-1 text-base text-red-800 dark:text-red-100">
+                {t('reliability.riskyBanner', {
+                  percent: Math.round((borrowerReliability.onTimeRate ?? 0) * 100),
+                })}
+              </Text>
+            </View>
+          ) : (
+            borrowerFlag &&
+            borrowerFlag.totalOverdue > 0 && (
+              <View className="flex-row gap-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950">
+                <Ionicons name="warning" size={22} color="#d97706" />
+                <Text className="flex-1 text-base text-amber-900 dark:text-amber-100">
+                  {t('reliability.overdueBanner', {
+                    name: borrower?.fullName ?? '',
+                    amount: formatPeso(borrowerFlag.totalOverdue),
+                  })}
+                </Text>
+              </View>
+            )
+          )}
+
           {renewal && (
             <View className="gap-3 rounded-2xl border-2 border-sky-500 bg-sky-50 p-5 dark:border-sky-700 dark:bg-sky-950">
               <Text className="text-sm font-bold uppercase text-sky-800 dark:text-sky-200">
@@ -428,12 +527,27 @@ export default function NewLoanScreen() {
             </View>
           )}
 
+          {presets.length > 0 && (
+            <PresetChips
+              presets={presets}
+              selectedId={selectedPresetId}
+              onSelect={applyPreset}
+              customLabel={t('presets.custom')}
+            />
+          )}
+
           <FormField
             label="Principal"
             hint="Amount lent"
             prefix="₱"
             value={principalText}
-            onChangeText={setPrincipalText}
+            onChangeText={(v) => {
+              setPrincipalText(v);
+              if (presetControlledPrincipal) {
+                setPresetControlledPrincipal(false);
+                unapplyPreset();
+              }
+            }}
             placeholder="5000"
             keyboardType="decimal-pad"
             error={submitted ? fieldErrors.principal : null}
@@ -442,7 +556,10 @@ export default function NewLoanScreen() {
           <SegmentedControl
             label="Payment type"
             value={paymentType}
-            onChange={setPaymentType}
+            onChange={(v) => {
+              setPaymentType(v);
+              unapplyPreset();
+            }}
             options={[
               { value: 'daily', label: 'Daily installments' },
               { value: 'lump_sum', label: 'Lump sum' },
@@ -452,7 +569,10 @@ export default function NewLoanScreen() {
           <SegmentedControl
             label="Compute by"
             value={mode}
-            onChange={setMode}
+            onChange={(v) => {
+              setMode(v);
+              unapplyPreset();
+            }}
             options={[
               { value: 'rate', label: 'Interest %' },
               { value: 'installment', label: isDaily ? 'Daily amount' : 'Amount to pay' },
@@ -465,7 +585,10 @@ export default function NewLoanScreen() {
               hint="Flat, for the whole term"
               suffix="%"
               value={rateText}
-              onChangeText={setRateText}
+              onChangeText={(v) => {
+                setRateText(v);
+                unapplyPreset();
+              }}
               placeholder="20"
               keyboardType="decimal-pad"
               error={submitted ? fieldErrors.rate : null}
@@ -475,7 +598,10 @@ export default function NewLoanScreen() {
               label={isDaily ? 'Daily amount (hulog)' : 'Amount to pay back'}
               prefix="₱"
               value={amountText}
-              onChangeText={setAmountText}
+              onChangeText={(v) => {
+                setAmountText(v);
+                unapplyPreset();
+              }}
               placeholder={isDaily ? '150' : '5500'}
               keyboardType="decimal-pad"
               error={submitted ? fieldErrors.amount : null}
@@ -487,7 +613,10 @@ export default function NewLoanScreen() {
             hint="Max 365"
             suffix="days"
             value={termText}
-            onChangeText={setTermText}
+            onChangeText={(v) => {
+              setTermText(v);
+              unapplyPreset();
+            }}
             placeholder={isDaily ? '40' : '30'}
             keyboardType="number-pad"
             error={submitted ? fieldErrors.term : null}
@@ -507,12 +636,25 @@ export default function NewLoanScreen() {
               </View>
               <Switch
                 value={skipSundays}
-                onValueChange={setSkipSundays}
+                onValueChange={(v) => {
+                  setSkipSundays(v);
+                  unapplyPreset();
+                }}
                 trackColor={{ true: colors.primary, false: '#cbd5e1' }}
                 thumbColor="#ffffff"
               />
             </View>
           )}
+
+          <Pressable
+            onPress={() => setSavePresetVisible(true)}
+            accessibilityRole="button"
+            className="min-h-12 flex-row items-center justify-center gap-2 rounded-xl border border-dashed border-teal-400 active:opacity-70 dark:border-teal-700">
+            <Ionicons name="bookmark-outline" size={18} color={colors.primary} />
+            <Text className="text-base font-semibold text-teal-700 dark:text-teal-300">
+              {t('presets.saveAsPreset')}
+            </Text>
+          </Pressable>
 
           <FormField
             label="Notes"
@@ -588,6 +730,28 @@ export default function NewLoanScreen() {
           </Pressable>
         </View>
       </ScrollView>
+
+      <SavePresetSheet
+        visible={savePresetVisible}
+        onClose={() => setSavePresetVisible(false)}
+        currentValues={{
+          paymentType,
+          inputMode: mode,
+          principal,
+          interestRate: rate,
+          installmentAmount: amount,
+          numberOfInstallments: term,
+          skipSundays: isDaily && skipSundays,
+        }}
+        onSaved={(preset) => {
+          setPresets((prev) =>
+            [...prev.filter((p) => p.id !== preset.id), preset].sort((a, b) =>
+              a.name.localeCompare(b.name),
+            ),
+          );
+          setSelectedPresetId(preset.id);
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }

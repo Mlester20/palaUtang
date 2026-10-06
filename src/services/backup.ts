@@ -37,6 +37,7 @@ import {
   readWhitelistedSettings,
   writeRestoreMarker,
 } from '@/store/backup-state';
+import { reloadDocumentSettings } from '@/store/document-settings';
 import { reloadFlagThresholds } from '@/store/flag-settings';
 
 /**
@@ -270,6 +271,7 @@ async function rollbackFromSafety(live: SQLiteDatabase, safety: File) {
 function refreshEverything() {
   reloadAppState();
   reloadFlagThresholds();
+  reloadDocumentSettings();
   // A restored business profile means this phone doesn't need onboarding/setup again.
   if (getAppStateSnapshot().profile) completeOnboarding();
   bumpDataGeneration();

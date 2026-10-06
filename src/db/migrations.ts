@@ -265,6 +265,35 @@ const MIGRATIONS: Migration[] = [
   -- Loan releases are read by start date.
   CREATE INDEX idx_loans_start_date ON loans (start_date);
   `,
+
+  // v7: collection areas (routes), loan presets, and a reliability-rating index.
+  //  - borrowers.area: free text (normalised/validated in code, src/lib/areas.ts), nullable.
+  //  - loan_presets: a form shortcut only. NO foreign key to loans: a loan copies a preset's
+  //    values once and keeps them forever, so deleting a preset never touches existing loans.
+  //    tier-like fields (payment_type, input_mode) are validated in code, not CHECK, so new
+  //    values can be added later without another migration.
+  //  - idx_installments_original_due_date: the reliability query ranks/filters by this column.
+  `
+  ALTER TABLE borrowers ADD COLUMN area TEXT;
+  CREATE INDEX idx_borrowers_area ON borrowers (area);
+  CREATE INDEX IF NOT EXISTS idx_installments_original_due_date
+    ON installments (original_due_date);
+
+  CREATE TABLE loan_presets (
+    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+    name                   TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    payment_type           TEXT NOT NULL,
+    input_mode             TEXT NOT NULL,
+    principal              INTEGER CHECK (principal IS NULL OR principal > 0),
+    interest_rate          REAL CHECK (interest_rate IS NULL OR interest_rate >= 0),
+    installment_amount     INTEGER CHECK (installment_amount IS NULL OR installment_amount > 0),
+    number_of_installments INTEGER NOT NULL CHECK (number_of_installments >= 1),
+    skip_sundays           INTEGER NOT NULL DEFAULT 0 CHECK (skip_sundays IN (0, 1)),
+    created_at             TEXT NOT NULL,
+    updated_at             TEXT NOT NULL
+  );
+  CREATE UNIQUE INDEX idx_loan_presets_name ON loan_presets (name COLLATE NOCASE);
+  `,
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

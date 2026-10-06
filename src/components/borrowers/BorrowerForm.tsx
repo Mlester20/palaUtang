@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showError } from '@/lib/errors';
+import { MAX_AREA_LENGTH, validateArea } from '@/lib/areas';
 import { isValidPhPhone } from '@/lib/phone';
 import type { BorrowerInput } from '@/types/borrower';
 
@@ -24,6 +25,8 @@ type BorrowerFormProps = {
   onSubmit: (input: BorrowerInput) => Promise<void>;
   /** Number of other borrowers with the same full name (for the "Save anyway" warning). */
   countSameName: (fullName: string) => Promise<number>;
+  /** Most-used existing areas (up to 8), for the Area field's suggestion chips. */
+  areaSuggestions?: string[];
 };
 
 export function BorrowerForm({
@@ -31,12 +34,14 @@ export function BorrowerForm({
   submitLabel,
   onSubmit,
   countSameName,
+  areaSuggestions = [],
 }: BorrowerFormProps) {
   const insets = useSafeAreaInsets();
   const [fullName, setFullName] = useState(initialValues?.fullName ?? '');
   const [nickname, setNickname] = useState(initialValues?.nickname ?? '');
   const [phone, setPhone] = useState(initialValues?.phone ?? '');
   const [address, setAddress] = useState(initialValues?.address ?? '');
+  const [area, setArea] = useState(initialValues?.area ?? '');
   const [notes, setNotes] = useState(initialValues?.notes ?? '');
   const [submitted, setSubmitted] = useState(false);
   const [phoneTouched, setPhoneTouched] = useState(false);
@@ -49,10 +54,12 @@ export function BorrowerForm({
     phone.trim() !== '' && !isValidPhPhone(phone)
       ? 'Use 09XXXXXXXXX or +639XXXXXXXXX, or leave it blank.'
       : null;
+  const areaError =
+    validateArea(area) === 'tooLong' ? `Keep the area under ${MAX_AREA_LENGTH} characters.` : null;
 
   const save = async () => {
     try {
-      await onSubmit({ fullName, nickname, phone, address, notes });
+      await onSubmit({ fullName, nickname, phone, address, area, notes });
     } catch (error) {
       showError('Could not save', error);
     } finally {
@@ -63,7 +70,7 @@ export function BorrowerForm({
 
   const onPressSave = async () => {
     setSubmitted(true);
-    if (nameError || phoneError || busy.current) return;
+    if (nameError || phoneError || areaError || busy.current) return;
     busy.current = true;
     setSaving(true);
 
@@ -137,6 +144,44 @@ export function BorrowerForm({
             placeholder="Street, barangay, city"
             multiline
           />
+          <View className="gap-2">
+            <Field
+              label="Area"
+              hint="Collection route, optional"
+              value={area}
+              onChangeText={setArea}
+              placeholder="e.g. Palengke"
+              autoCapitalize="words"
+              error={submitted ? areaError : null}
+            />
+            {areaSuggestions.length > 0 && (
+              <View className="flex-row flex-wrap gap-2">
+                {areaSuggestions.map((suggestion) => {
+                  const selected = suggestion.toLowerCase() === area.trim().toLowerCase();
+                  return (
+                    <Pressable
+                      key={suggestion}
+                      onPress={() => setArea(suggestion)}
+                      accessibilityRole="button"
+                      className={
+                        selected
+                          ? 'min-h-10 justify-center rounded-full bg-teal-700 px-3 dark:bg-teal-500'
+                          : 'min-h-10 justify-center rounded-full border border-slate-300 bg-white px-3 active:opacity-70 dark:border-slate-700 dark:bg-slate-900'
+                      }>
+                      <Text
+                        className={
+                          selected
+                            ? 'text-sm font-bold text-white'
+                            : 'text-sm font-semibold text-slate-700 dark:text-slate-200'
+                        }>
+                        {suggestion}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+          </View>
           <Field
             label="Notes"
             value={notes ?? ''}

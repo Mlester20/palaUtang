@@ -13,8 +13,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheet } from '@/components/BottomSheet';
 import { DateField } from '@/components/DateField';
 import { FormField } from '@/components/FormField';
+import { ReceiptSheet } from '@/components/receipts/ReceiptSheet';
 import { getLoanById } from '@/db/loans';
 import {
   getLoanBalanceSummary,
@@ -66,6 +68,10 @@ export default function NewPaymentScreen() {
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
   const previewRequest = useRef(0);
+  // After a successful save: the success sheet shows until "Done" (or the receipt sheet closes).
+  const [savedPaymentId, setSavedPaymentId] = useState<number | null>(null);
+  const [savedMessage, setSavedMessage] = useState('');
+  const [receiptOpen, setReceiptOpen] = useState(false);
 
   useEffect(() => {
     Promise.all([getLoanById(db, loanId), getLoanBalanceSummary(db, loanId, today)])
@@ -151,16 +157,12 @@ export default function NewPaymentScreen() {
 
   const save = async () => {
     try {
-      await recordPayment(
+      const paymentId = await recordPayment(
         db,
         { loanId, amount: amount!, paidOn, note: note.trim() || null },
         today,
       );
-      // Return to where the user came from (it reloads on focus), so Back can't reopen this form.
-      if (fromCollection) router.dismissTo('/collection');
-      else router.back();
-      Alert.alert(
-        t('payments.savedTitle'),
+      setSavedMessage(
         preview!.completesLoan
           ? t('payments.savedCompleted', { amount: formatPeso(amount!) })
           : t('payments.savedMessage', {
@@ -168,16 +170,27 @@ export default function NewPaymentScreen() {
               balance: formatPeso(preview!.balanceAfter),
             }),
       );
+      // Stays "busy" (Save can't be tapped again) until the success sheet is dismissed.
+      setSavedPaymentId(paymentId);
     } catch (error) {
       if (error instanceof PaymentValidationError) {
         Alert.alert(t('payments.saveFailed'), error.errors.map(errorText).join('\n'));
       } else {
         showError(t('payments.saveFailed'), error);
       }
-    } finally {
       busy.current = false;
       setSaving(false);
     }
+  };
+
+  /** Return to where the user came from (it reloads on focus), so Back can't reopen this form. */
+  const finish = () => {
+    busy.current = false;
+    setSaving(false);
+    setSavedPaymentId(null);
+    setReceiptOpen(false);
+    if (fromCollection) router.dismissTo('/collection');
+    else router.back();
   };
 
   const onPressSave = () => {
@@ -341,6 +354,34 @@ export default function NewPaymentScreen() {
           </Pressable>
         </View>
       </ScrollView>
+
+      <BottomSheet visible={savedPaymentId !== null && !receiptOpen} onClose={finish}>
+        <View className="gap-4 py-1">
+          <View className="items-center gap-1">
+            <Text className="text-xl font-bold text-slate-900 dark:text-white">
+              {t('receipts.savedTitle')}
+            </Text>
+            <Text className="text-center text-base text-slate-600 dark:text-slate-300">
+              {savedMessage}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => setReceiptOpen(true)}
+            accessibilityRole="button"
+            className="min-h-14 items-center justify-center rounded-2xl bg-teal-700 active:bg-teal-800 dark:bg-teal-500">
+            <Text className="text-lg font-bold text-white">{t('receipts.shareReceipt')}</Text>
+          </Pressable>
+          <Pressable
+            onPress={finish}
+            accessibilityRole="button"
+            className="min-h-14 items-center justify-center rounded-2xl border border-slate-300 active:opacity-70 dark:border-slate-700">
+            <Text className="text-lg font-semibold text-slate-700 dark:text-slate-200">
+              {t('receipts.done')}
+            </Text>
+          </Pressable>
+        </View>
+      </BottomSheet>
+      <ReceiptSheet paymentId={receiptOpen ? savedPaymentId : null} onClose={finish} />
     </KeyboardAvoidingView>
   );
 }

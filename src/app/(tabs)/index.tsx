@@ -242,6 +242,7 @@ function Dashboard({
                   <FlaggedBorrowerRow
                     name={flag.borrowerName}
                     nickname={flag.nickname}
+                    area={flag.area}
                     phone={phone}
                     chipLabel={flagChipLabel(flag)}
                     chipTone={flag.severity === 'critical' ? 'critical' : 'flagged'}

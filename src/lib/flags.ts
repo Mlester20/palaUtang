@@ -96,6 +96,7 @@ export interface FlagLoanRow extends LoanLateness {
   borrowerName: string;
   nickname: string | null;
   phone: string | null;
+  area: string | null;
   /** Latest active, non-netted payment date across ALL the borrower's loans (informational). */
   lastPaymentDate: string | null;
 }
@@ -105,6 +106,7 @@ export interface BorrowerFlag {
   borrowerName: string;
   nickname: string | null;
   phone: string | null;
+  area: string | null;
   daysBehind: number;
   totalOverdue: number;
   severity: Severity;
@@ -140,6 +142,7 @@ export function buildBorrowerFlags(
         borrowerName: row.borrowerName,
         nickname: row.nickname,
         phone: row.phone,
+        area: row.area,
         daysBehind: days,
         totalOverdue: row.overdueOutstanding,
         severity: 'none',

@@ -41,6 +41,7 @@ export interface AttentionItem {
   name: string;
   nickname: string | null;
   phone: string | null;
+  area: string | null;
   chipLabel: string;
   chipTone: ChipTone;
   totalOverdueCentavos: Centavos;

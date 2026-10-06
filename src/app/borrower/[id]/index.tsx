@@ -8,6 +8,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { InitialsAvatar } from '@/components/dashboard';
 import { SeverityBanner } from '@/components/flags/SeverityBanner';
 import { LoanCard } from '@/components/loans/LoanCard';
+import { ReliabilityCard } from '@/components/reliability/ReliabilityCard';
+import { StatementOptionsSheet } from '@/components/statements/StatementOptionsSheet';
 import {
   archiveBorrower,
   BorrowerHasActiveLoansError,
@@ -16,11 +18,15 @@ import {
 } from '@/db/borrowers';
 import { getBorrowerFlag } from '@/db/flags';
 import { getLoansByBorrower } from '@/db/loans';
+import { getBorrowerReliability } from '@/db/reliability';
+import { t } from '@/i18n';
 import { formatFullDate } from '@/lib/date';
 import { showError } from '@/lib/errors';
 import type { BorrowerFlag } from '@/lib/flags';
 import { todayYmd } from '@/lib/loan';
+import type { ReliabilityResult } from '@/lib/reliability';
 import { useThemeColors } from '@/lib/theme';
+import { shareStatement } from '@/services/statement';
 import { useFlagThresholds } from '@/store/flag-settings';
 import type { Borrower } from '@/types/borrower';
 import type { LoanSummary } from '@/types/loan';
@@ -33,8 +39,10 @@ export default function BorrowerDetailsScreen() {
   const [borrower, setBorrower] = useState<Borrower | null | undefined>(undefined);
   const [loans, setLoans] = useState<LoanSummary[]>([]);
   const [flag, setFlag] = useState<BorrowerFlag | null>(null);
+  const [reliability, setReliability] = useState<ReliabilityResult | null>(null);
   const thresholds = useFlagThresholds();
   const [busy, setBusy] = useState(false);
+  const [statementSheetOpen, setStatementSheetOpen] = useState(false);
 
   // Reload whenever this screen is shown again (e.g. after editing or creating a loan).
   useFocusEffect(
@@ -44,12 +52,14 @@ export default function BorrowerDetailsScreen() {
         getBorrowerById(db, id),
         getLoansByBorrower(db, id),
         getBorrowerFlag(db, id, todayYmd(), thresholds),
+        getBorrowerReliability(db, id, todayYmd(), thresholds),
       ])
-        .then(([b, l, f]) => {
+        .then(([b, l, f, r]) => {
           if (!active) return;
           setBorrower(b);
           setLoans(l);
           setFlag(f);
+          setReliability(r);
         })
         .catch((error) => {
           console.error('[Load borrower failed]', error);
@@ -194,6 +204,12 @@ export default function BorrowerDetailsScreen() {
               color={colors.primary}
             />
             <InfoRow
+              icon="map"
+              label="Area"
+              value={borrower.area}
+              color={colors.primary}
+            />
+            <InfoRow
               icon="document-text"
               label="Notes"
               value={borrower.notes}
@@ -206,6 +222,8 @@ export default function BorrowerDetailsScreen() {
               color={colors.primary}
             />
           </View>
+
+          {reliability && <ReliabilityCard result={reliability} />}
 
           {/* Actions */}
           <View className="flex-row gap-3">
@@ -242,6 +260,15 @@ export default function BorrowerDetailsScreen() {
               </Pressable>
             )}
           </View>
+          <Pressable
+            onPress={() => setStatementSheetOpen(true)}
+            accessibilityRole="button"
+            className="min-h-14 flex-row items-center justify-center gap-2 rounded-2xl border-2 border-teal-700 bg-white active:opacity-70 dark:border-teal-400 dark:bg-slate-900">
+            <Ionicons name="document-text-outline" size={22} color={colors.primary} />
+            <Text className="text-lg font-bold text-teal-700 dark:text-teal-300">
+              {t('statements.shareStatement')}
+            </Text>
+          </Pressable>
 
           {/* Loans */}
           <View className="gap-3">
@@ -285,6 +312,11 @@ export default function BorrowerDetailsScreen() {
           </View>
         </View>
       </ScrollView>
+      <StatementOptionsSheet
+        visible={statementSheetOpen}
+        onClose={() => setStatementSheetOpen(false)}
+        onGenerate={(options) => shareStatement(db, { borrowerId: borrower.id }, options)}
+      />
     </>
   );
 }

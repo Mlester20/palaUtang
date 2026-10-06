@@ -40,6 +40,7 @@ export interface CollectionRow {
   borrowerName: string;
   nickname: string | null;
   phone: string | null;
+  area: string | null;
   paymentType: PaymentType;
   loanStatus: LoanStatus;
   /** Regular installment amount (daily hulog, or the lump sum). */
@@ -91,6 +92,15 @@ export function classifyRow(row: CollectionRow, today: string): ClassifiedRow {
 
 export type CollectionFilter = 'all' | 'overdue' | 'daily' | 'lump_sum';
 
+/** 'all' = every borrower, 'none' = "No area", anything else = that exact area (case-insensitive). */
+export type CollectionAreaFilter = 'all' | 'none' | string;
+
+export function matchesAreaFilter(row: Pick<ClassifiedRow, 'area'>, filter: CollectionAreaFilter): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'none') return row.area === null;
+  return row.area !== null && row.area.toLowerCase() === filter.toLowerCase();
+}
+
 export function matchesFilter(row: ClassifiedRow, filter: CollectionFilter): boolean {
   switch (filter) {
     case 'overdue':
@@ -128,21 +138,23 @@ export interface CollectionSections {
 const byName = (a: ClassifiedRow, b: ClassifiedRow) =>
   a.borrowerName.localeCompare(b.borrowerName) || a.loanId - b.loanId;
 
+/** Most overdue first (oldest shortfall), then biggest amount, then name — shared by both groupings. */
+const byMostOverdue = (a: ClassifiedRow, b: ClassifiedRow) =>
+  (a.oldestOverdueDate ?? '').localeCompare(b.oldestOverdueDate ?? '') ||
+  b.overdueOutstanding - a.overdueOutstanding ||
+  byName(a, b);
+
 export function groupCollection(
   rows: ClassifiedRow[],
   filter: CollectionFilter = 'all',
   search = '',
+  areaFilter: CollectionAreaFilter = 'all',
 ): CollectionSections {
-  const visible = rows.filter((r) => matchesFilter(r, filter) && matchesSearch(r, search));
+  const visible = rows.filter(
+    (r) => matchesFilter(r, filter) && matchesSearch(r, search) && matchesAreaFilter(r, areaFilter),
+  );
   return {
-    overdue: visible
-      .filter((r) => r.status === 'overdue')
-      .sort(
-        (a, b) =>
-          (a.oldestOverdueDate ?? '').localeCompare(b.oldestOverdueDate ?? '') ||
-          b.overdueOutstanding - a.overdueOutstanding ||
-          byName(a, b),
-      ),
+    overdue: visible.filter((r) => r.status === 'overdue').sort(byMostOverdue),
     dueToday: visible
       .filter((r) => r.status === 'due_today' || r.status === 'partial')
       .sort(byName),
@@ -150,6 +162,82 @@ export function groupCollection(
       .filter((r) => r.status === 'paid_today' || r.status === 'paid_in_advance')
       .sort(byName),
   };
+}
+
+export interface AreaGroupSection {
+  /** null = "No area" (always sorts last). */
+  area: string | null;
+  toCollectCount: number;
+  toCollectAmount: number;
+  /** Overdue first (most overdue first), then due today / partial. */
+  rows: ClassifiedRow[];
+  /** Paid today / in advance, A–Z; shown only when "Show paid" is on. */
+  paidRows: ClassifiedRow[];
+}
+
+/**
+ * Collection grouped by area instead of status: one section per area, A–Z, "No area" last.
+ * Inside each section: overdue first (most overdue first), then due today.
+ */
+export function groupByArea(
+  rows: ClassifiedRow[],
+  filter: CollectionFilter = 'all',
+  search = '',
+  areaFilter: CollectionAreaFilter = 'all',
+): AreaGroupSection[] {
+  const visible = rows.filter(
+    (r) => matchesFilter(r, filter) && matchesSearch(r, search) && matchesAreaFilter(r, areaFilter),
+  );
+  const byArea = new Map<string | null, ClassifiedRow[]>();
+  for (const r of visible) {
+    const key = r.area;
+    const list = byArea.get(key);
+    if (list) list.push(r);
+    else byArea.set(key, [r]);
+  }
+  const sections: AreaGroupSection[] = [];
+  for (const [area, list] of byArea) {
+    const toCollectRows = [
+      ...list.filter((r) => r.status === 'overdue').sort(byMostOverdue),
+      ...list.filter((r) => r.status === 'due_today' || r.status === 'partial').sort(byName),
+    ];
+    sections.push({
+      area,
+      toCollectCount: toCollectRows.length,
+      toCollectAmount: toCollectRows.reduce((sum, r) => sum + r.toCollect, 0),
+      rows: toCollectRows,
+      paidRows: list
+        .filter((r) => r.status === 'paid_today' || r.status === 'paid_in_advance')
+        .sort(byName),
+    });
+  }
+  return sections.sort((a, b) => {
+    if (a.area === null) return b.area === null ? 0 : 1;
+    if (b.area === null) return -1;
+    return a.area.localeCompare(b.area);
+  });
+}
+
+export interface AreaFilterOption {
+  /** null = "No area". */
+  area: string | null;
+  /** Loans still to collect in this area (for the chip's count). */
+  toCollectCount: number;
+}
+
+/** Areas present among loans with something to collect, A–Z, "No area" last — for the filter chips. */
+export function areaFilterOptions(rows: ClassifiedRow[]): AreaFilterOption[] {
+  const counts = new Map<string | null, number>();
+  for (const r of rows) {
+    if (r.toCollect <= 0) continue;
+    counts.set(r.area, (counts.get(r.area) ?? 0) + 1);
+  }
+  const options = [...counts.entries()].map(([area, toCollectCount]) => ({ area, toCollectCount }));
+  return options.sort((a, b) => {
+    if (a.area === null) return b.area === null ? 0 : 1;
+    if (b.area === null) return -1;
+    return a.area.localeCompare(b.area);
+  });
 }
 
 export interface CollectionSummary {

@@ -20,6 +20,7 @@ type CollectedDayViewProps = {
   onRefresh: () => void;
   onVoid: (payment: DatedPayment) => void;
   onOpenLoan: (loanId: number) => void;
+  onReceipt: (paymentId: number) => void;
   /** Segment switcher etc., shown above the list. */
   header: ReactElement;
 };
@@ -35,6 +36,7 @@ export function CollectedDayView({
   onRefresh,
   onVoid,
   onOpenLoan,
+  onReceipt,
   header,
 }: CollectedDayViewProps) {
   const colors = useThemeColors();
@@ -141,14 +143,24 @@ export function CollectedDayView({
                 {formatPeso(item.amount)}
               </Text>
               {!voided && (
-                <Pressable
-                  onPress={() => onVoid(item)}
-                  accessibilityRole="button"
-                  className="min-h-12 justify-center rounded-xl border border-red-300 px-4 active:opacity-70 dark:border-red-900">
-                  <Text className="text-base font-bold text-red-600 dark:text-red-400">
-                    {t('payments.void')}
-                  </Text>
-                </Pressable>
+                <View className="flex-row gap-2">
+                  <Pressable
+                    onPress={() => onReceipt(item.id)}
+                    accessibilityRole="button"
+                    className="min-h-12 justify-center rounded-xl border border-sky-300 px-4 active:opacity-70 dark:border-sky-800">
+                    <Text className="text-base font-bold text-sky-700 dark:text-sky-300">
+                      {t('receipts.receiptAction')}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => onVoid(item)}
+                    accessibilityRole="button"
+                    className="min-h-12 justify-center rounded-xl border border-red-300 px-4 active:opacity-70 dark:border-red-900">
+                    <Text className="text-base font-bold text-red-600 dark:text-red-400">
+                      {t('payments.void')}
+                    </Text>
+                  </Pressable>
+                </View>
               )}
             </View>
           </View>

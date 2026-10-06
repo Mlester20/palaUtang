@@ -18,6 +18,12 @@ export const BACKUP_SETTING_KEYS = [
   'app.businessProfile',
   'flags.flagAfterDays',
   'flags.criticalAfterDays',
+  'receipts.footerNote',
+  'receipts.businessPhone',
+  'receipts.businessAddress',
+  'receipts.showBalance',
+  'statements.showInterest',
+  'statements.paperSize',
 ] as const;
 
 export const SAFETY_BACKUPS_TO_KEEP = 3;
@@ -80,6 +86,7 @@ export function requiredTablesFor(schemaVersion: number): string[] {
   if (schemaVersion >= 2) tables.push('loans', 'installments');
   if (schemaVersion >= 3) tables.push('payments', 'payment_allocations');
   if (schemaVersion >= 6) tables.push('cash_entries');
+  if (schemaVersion >= 7) tables.push('loan_presets');
   return tables;
 }
 

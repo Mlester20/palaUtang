@@ -7,6 +7,8 @@ export interface Borrower {
   phone: string | null;
   address: string | null;
   notes: string | null;
+  /** Collection area / route; normalised (trimmed, collapsed whitespace), max 40 chars. */
+  area: string | null;
   /** ISO timestamp; null means the borrower is active (archive = soft delete). */
   archivedAt: string | null;
   createdAt: string;
@@ -20,9 +22,12 @@ export interface BorrowerInput {
   phone?: string | null;
   address?: string | null;
   notes?: string | null;
+  area?: string | null;
 }
 
 export interface GetBorrowersOptions {
   search?: string;
   includeArchived?: boolean;
+  /** Exact area (case-insensitive); '' = borrowers with no area; omit/undefined = no filter. */
+  area?: string;
 }

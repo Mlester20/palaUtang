@@ -15,6 +15,7 @@ type FlagSqlRow = {
   borrower_name: string;
   nickname: string | null;
   phone: string | null;
+  area: string | null;
   payment_type: PaymentType;
   installment_amount: number;
   overdue_outstanding: number;
@@ -56,6 +57,7 @@ const FLAGS_SQL = `
          b.full_name AS borrower_name,
          b.nickname,
          b.phone,
+         b.area,
          l.payment_type,
          l.installment_amount,
          o.overdue_outstanding,
@@ -81,6 +83,7 @@ async function loadFlagRows(
     borrowerName: r.borrower_name,
     nickname: r.nickname,
     phone: r.phone,
+    area: r.area,
     paymentType: r.payment_type,
     installmentAmount: r.installment_amount,
     overdueOutstanding: r.overdue_outstanding,

@@ -144,6 +144,22 @@ export default function RootLayout() {
                   name="reports"
                   options={{ headerShown: true, title: t('reports.title') }}
                 />
+                <Stack.Screen
+                  name="areas/index"
+                  options={{ headerShown: true, title: t('areas.screenTitle') }}
+                />
+                <Stack.Screen
+                  name="presets/index"
+                  options={{ headerShown: true, title: t('presets.screenTitle') }}
+                />
+                <Stack.Screen
+                  name="presets/new"
+                  options={{ headerShown: true, title: t('presets.newTitle') }}
+                />
+                <Stack.Screen
+                  name="presets/[id]/edit"
+                  options={{ headerShown: true, title: t('presets.editTitle') }}
+                />
                 {/* Settings → View intro again (same slides, no data or flags changed). */}
                 <Stack.Screen name="intro" />
               </Stack.Protected>

@@ -13,6 +13,8 @@ import {
 } from '@/components/loans/StatusBadges';
 import { ProgressBar } from '@/components/loans/ProgressBar';
 import { VoidPaymentModal } from '@/components/payments/VoidPaymentModal';
+import { ReceiptSheet } from '@/components/receipts/ReceiptSheet';
+import { StatementOptionsSheet } from '@/components/statements/StatementOptionsSheet';
 import { canCancelLoan, cancelLoan, getInstallmentsByLoan, getLoanById } from '@/db/loans';
 import {
   getLoanBalanceSummary,
@@ -34,6 +36,7 @@ import {
 import { formatPeso } from '@/lib/money';
 import { useThemeColors } from '@/lib/theme';
 import type { LoanBalanceSummary } from '@/lib/payments';
+import { shareStatement } from '@/services/statement';
 import type { Installment, LoanSummary, Payment } from '@/types/loan';
 
 type LoadedLoan = {
@@ -64,6 +67,8 @@ export default function LoanDetailScreen() {
   const [data, setData] = useState<LoadedLoan | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [voiding, setVoiding] = useState<Payment | null>(null);
+  const [receiptPaymentId, setReceiptPaymentId] = useState<number | null>(null);
+  const [statementSheetOpen, setStatementSheetOpen] = useState(false);
   const today = todayYmd();
 
   const load = useCallback(async () => {
@@ -389,6 +394,15 @@ export default function LoanDetailScreen() {
           <Text className="text-lg font-bold text-red-600 dark:text-red-400">Cancel loan</Text>
         </Pressable>
       )}
+      <Pressable
+        onPress={() => setStatementSheetOpen(true)}
+        accessibilityRole="button"
+        className="min-h-14 flex-row items-center justify-center gap-2 rounded-2xl border-2 border-teal-700 bg-white active:opacity-70 dark:border-teal-400 dark:bg-slate-900">
+        <Ionicons name="document-text-outline" size={22} color={colors.primary} />
+        <Text className="text-lg font-bold text-teal-700 dark:text-teal-300">
+          {t('statements.shareLoanStatement')}
+        </Text>
+      </Pressable>
 
       {/* Payment history (voided payments stay, clearly marked) */}
       <View className="gap-3">
@@ -438,15 +452,27 @@ export default function LoanDetailScreen() {
                       </Text>
                     )}
                   </View>
-                  {!voided && loan.status !== 'cancelled' && (
-                    <Pressable
-                      onPress={() => setVoiding(p)}
-                      accessibilityRole="button"
-                      className="min-h-12 justify-center rounded-xl border border-red-300 px-4 active:opacity-70 dark:border-red-900">
-                      <Text className="text-base font-bold text-red-600 dark:text-red-400">
-                        {t('payments.void')}
-                      </Text>
-                    </Pressable>
+                  {!voided && (
+                    <View className="flex-row gap-2">
+                      <Pressable
+                        onPress={() => setReceiptPaymentId(p.id)}
+                        accessibilityRole="button"
+                        className="min-h-12 justify-center rounded-xl border border-sky-300 px-4 active:opacity-70 dark:border-sky-800">
+                        <Text className="text-base font-bold text-sky-700 dark:text-sky-300">
+                          {t('receipts.receiptAction')}
+                        </Text>
+                      </Pressable>
+                      {loan.status !== 'cancelled' && (
+                        <Pressable
+                          onPress={() => setVoiding(p)}
+                          accessibilityRole="button"
+                          className="min-h-12 justify-center rounded-xl border border-red-300 px-4 active:opacity-70 dark:border-red-900">
+                          <Text className="text-base font-bold text-red-600 dark:text-red-400">
+                            {t('payments.void')}
+                          </Text>
+                        </Pressable>
+                      )}
+                    </View>
                   )}
                 </View>
               );
@@ -546,6 +572,12 @@ export default function LoanDetailScreen() {
         onCancel={() => setVoiding(null)}
         warning={voiding?.type === 'settlement' ? t('settlement.voidSettlementWarning') : undefined}
         onConfirm={onVoid}
+      />
+      <ReceiptSheet paymentId={receiptPaymentId} onClose={() => setReceiptPaymentId(null)} />
+      <StatementOptionsSheet
+        visible={statementSheetOpen}
+        onClose={() => setStatementSheetOpen(false)}
+        onGenerate={(options) => shareStatement(db, { loanId: loan.id }, options)}
       />
     </>
   );

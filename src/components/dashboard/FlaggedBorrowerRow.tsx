@@ -15,10 +15,11 @@ type FlaggedBorrowerRowProps = Omit<AttentionItem, 'borrowerId'> & {
   onCall?: () => void;
 };
 
-/** "Needs attention" row: who, how late, how much, last payment, and a Call button. */
+/** "Needs attention" row: who, their area, how late, how much, last payment, and a Call button. */
 export function FlaggedBorrowerRow({
   name,
   nickname,
+  area,
   chipLabel,
   chipTone,
   totalOverdueCentavos,
@@ -42,8 +43,13 @@ export function FlaggedBorrowerRow({
               <Text className="font-normal text-slate-500 dark:text-slate-400"> “{nickname}”</Text>
             ) : null}
           </Text>
-          <View className="flex-row">
+          <View className="flex-row items-center gap-2">
             <StatusChip label={chipLabel} tone={chipTone} size="sm" />
+            {area && (
+              <Text className="text-xs text-slate-500 dark:text-slate-400" numberOfLines={1}>
+                {area}
+              </Text>
+            )}
           </View>
           <Text className="text-base font-bold text-slate-800 dark:text-slate-100">
             {t('flags.overdueAmount', { amount: formatPeso(totalOverdueCentavos) })}

@@ -12,6 +12,9 @@ type BorrowerListItemProps = {
   archived: boolean;
   /** Balda severity badge (Late / Flagged / Critical), if the borrower is behind. */
   badge?: { label: string; tone: ChipTone } | null;
+  /** Reliability tier badge (New / Reliable / Fair / Risky) — shown for every borrower. */
+  reliabilityBadge?: { label: string; tone: ChipTone } | null;
+  area?: string | null;
   onPress: () => void;
 };
 
@@ -19,8 +22,10 @@ export function BorrowerListItem({
   fullName,
   nickname,
   phone,
+  area,
   archived,
   badge,
+  reliabilityBadge,
   onPress,
 }: BorrowerListItemProps) {
   const colors = useThemeColors();
@@ -57,9 +62,17 @@ export function BorrowerListItem({
             {phone}
           </Text>
         )}
-        {badge && (
-          <View className="flex-row pt-1">
-            <StatusChip label={badge.label} tone={badge.tone} size="sm" />
+        {area && (
+          <Text className="text-xs text-slate-500 dark:text-slate-400" numberOfLines={1}>
+            {area}
+          </Text>
+        )}
+        {(badge || reliabilityBadge) && (
+          <View className="flex-row flex-wrap gap-1.5 pt-1">
+            {badge && <StatusChip label={badge.label} tone={badge.tone} size="sm" />}
+            {reliabilityBadge && (
+              <StatusChip label={reliabilityBadge.label} tone={reliabilityBadge.tone} size="sm" />
+            )}
           </View>
         )}
       </View>
