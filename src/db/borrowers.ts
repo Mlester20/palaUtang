@@ -13,13 +13,14 @@ type BorrowerRow = {
   address: string | null;
   notes: string | null;
   area: string | null;
+  route_position: number | null;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
 };
 
 const COLUMNS =
-  'id, full_name, nickname, phone, address, notes, area, archived_at, created_at, updated_at';
+  'id, full_name, nickname, phone, address, notes, area, route_position, archived_at, created_at, updated_at';
 
 function toBorrower(row: BorrowerRow): Borrower {
   return {
@@ -30,11 +31,24 @@ function toBorrower(row: BorrowerRow): Borrower {
     address: row.address,
     notes: row.notes,
     area: row.area,
+    routePosition: row.route_position,
     archivedAt: row.archived_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
+
+/**
+ * SQL fragment: the position a borrower lands on when placed into `$area` — NULL when the area
+ * itself is NULL, else one past the current end of that area's route. One definition, used by
+ * every INSERT/UPDATE that assigns a borrower to an area (new borrower, area changed, restored),
+ * so "new borrowers are appended at the end of the route" is a single rule, not three.
+ */
+const APPEND_TO_AREA_ROUTE_SQL = `
+  CASE WHEN $area IS NULL THEN NULL
+       ELSE (SELECT COALESCE(MAX(route_position), 0) + 1
+             FROM borrowers WHERE area = $area AND archived_at IS NULL)
+  END`;
 
 /** Trims text; empty optional fields become NULL. */
 function clean(value: string | null | undefined): string | null {
@@ -61,12 +75,13 @@ function likePattern(search: string) {
 }
 
 /**
- * Active borrowers (optionally archived too), A–Z. Search matches name, nickname, phone or
- * area. `area` filters to that exact area (case-insensitive); pass '' for "No area".
+ * Active borrowers (optionally archived too), A–Z (or, with `sort: 'route'`, by route_position —
+ * meant for when `area` narrows to one exact area). Search matches name, nickname, phone or area.
+ * `area` filters to that exact area (case-insensitive); pass '' for "No area".
  */
 export async function getBorrowers(
   db: SQLiteDatabase,
-  { search = '', includeArchived = false, area }: GetBorrowersOptions = {},
+  { search = '', includeArchived = false, area, sort = 'name' }: GetBorrowersOptions = {},
 ): Promise<Borrower[]> {
   const term = search.trim();
   // Phone numbers are stored without spaces/dashes, so search them the same way.
@@ -80,7 +95,7 @@ export async function getBorrowers(
          OR phone LIKE $phonePattern ESCAPE '\\'
          OR area LIKE $namePattern ESCAPE '\\')
        AND ($area IS NULL OR ($area = '' AND area IS NULL) OR lower(area) = lower($area))
-     ORDER BY full_name COLLATE NOCASE ASC, id ASC`,
+     ORDER BY ${sort === 'route' ? '(route_position IS NULL), route_position, ' : ''}full_name COLLATE NOCASE ASC, id ASC`,
     {
       $includeArchived: includeArchived ? 1 : 0,
       $term: term,
@@ -113,27 +128,59 @@ export async function findBorrowersWithSameName(
   return rows.map(toBorrower);
 }
 
-/** Returns the new borrower's id. */
+/** Returns the new borrower's id. New borrowers are appended at the end of their area's route. */
 export async function createBorrower(db: SQLiteDatabase, input: BorrowerInput): Promise<number> {
   const p = toParams(input);
   const area = await resolveArea(db, input.area);
   const now = new Date().toISOString();
   const result = await db.runAsync(
-    `INSERT INTO borrowers (full_name, nickname, phone, address, notes, area, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [p.fullName, p.nickname, p.phone, p.address, p.notes, area, now, now],
+    `INSERT INTO borrowers
+       (full_name, nickname, phone, address, notes, area, route_position, created_at, updated_at)
+     VALUES ($fullName, $nickname, $phone, $address, $notes, $area, ${APPEND_TO_AREA_ROUTE_SQL}, $now, $now)`,
+    {
+      $fullName: p.fullName,
+      $nickname: p.nickname,
+      $phone: p.phone,
+      $address: p.address,
+      $notes: p.notes,
+      $area: area,
+      $now: now,
+    },
   );
   return result.lastInsertRowId;
 }
 
+/**
+ * Updates a borrower. The route position is only touched when the area actually changes
+ * (cleared → NULL; changed to another area → appended at the end of that area's route); editing
+ * other fields with the same area leaves its position exactly where it was.
+ */
 export async function updateBorrower(db: SQLiteDatabase, id: number, input: BorrowerInput) {
   const p = toParams(input);
   const area = await resolveArea(db, input.area);
+  const current = await db.getFirstAsync<{ area: string | null }>(
+    'SELECT area FROM borrowers WHERE id = ?',
+    [id],
+  );
+  const areaChanged = (current?.area ?? null) !== area;
   const result = await db.runAsync(
     `UPDATE borrowers
-     SET full_name = ?, nickname = ?, phone = ?, address = ?, notes = ?, area = ?, updated_at = ?
-     WHERE id = ?`,
-    [p.fullName, p.nickname, p.phone, p.address, p.notes, area, new Date().toISOString(), id],
+     SET full_name = $fullName, nickname = $nickname, phone = $phone, address = $address,
+         notes = $notes, area = $area, updated_at = $now,
+         route_position = CASE WHEN $areaChanged = 0 THEN route_position
+                                ELSE ${APPEND_TO_AREA_ROUTE_SQL} END
+     WHERE id = $id`,
+    {
+      $fullName: p.fullName,
+      $nickname: p.nickname,
+      $phone: p.phone,
+      $address: p.address,
+      $notes: p.notes,
+      $area: area,
+      $now: new Date().toISOString(),
+      $areaChanged: areaChanged ? 1 : 0,
+      $id: id,
+    },
   );
   if (result.changes === 0) throw new Error('Borrower not found.');
 }
@@ -166,9 +213,16 @@ export async function archiveBorrower(db: SQLiteDatabase, id: number) {
   }
 }
 
+/** Restoring appends the borrower at the end of their area's route (its old position is dropped). */
 export async function restoreBorrower(db: SQLiteDatabase, id: number) {
-  await db.runAsync('UPDATE borrowers SET archived_at = NULL, updated_at = ? WHERE id = ?', [
-    new Date().toISOString(),
-    id,
-  ]);
+  await db.runAsync(
+    `UPDATE borrowers
+     SET archived_at = NULL, updated_at = $now,
+         route_position = CASE WHEN area IS NULL THEN NULL
+                                ELSE (SELECT COALESCE(MAX(route_position), 0) + 1
+                                      FROM borrowers WHERE area = borrowers.area AND archived_at IS NULL)
+                           END
+     WHERE id = $id`,
+    { $now: new Date().toISOString(), $id: id },
+  );
 }

@@ -76,6 +76,11 @@ export class AreaError extends Error {
  * Renames an area on every borrower who has it, in ONE transaction. Renaming to a spelling
  * that (case-insensitively) already exists MERGES the two: every borrower ends up on the
  * single existing spelling, since area is just a text column, not a separate table.
+ *
+ * Plain rename (to a brand-new spelling): route positions are left untouched. Merge (to an
+ * existing area): the moving borrowers are appended after the target area's current route, in
+ * their own existing relative order — so a route someone already set stays correct for the
+ * borrowers that already lived there, and the newly merged-in ones just continue after it.
  */
 export async function renameArea(db: SQLiteDatabase, from: string, to: string) {
   const normalized = normalizeArea(to);
@@ -83,19 +88,43 @@ export async function renameArea(db: SQLiteDatabase, from: string, to: string) {
   return writeTransaction(db, async () => {
     const canonical = await resolveAreaSpelling(db, normalized);
     const now = new Date().toISOString();
-    const result = await db.runAsync(
-      `UPDATE borrowers SET area = ?, updated_at = ?
-       WHERE area IS NOT NULL AND lower(area) = lower(?)`,
-      [canonical, now, from],
+    const isMerge = canonical.toLowerCase() !== from.toLowerCase();
+    if (!isMerge) {
+      const result = await db.runAsync(
+        `UPDATE borrowers SET area = ?, updated_at = ?
+         WHERE area IS NOT NULL AND lower(area) = lower(?)`,
+        [canonical, now, from],
+      );
+      if (result.changes === 0) throw new AreaError('notFound');
+      return;
+    }
+    const moving = await db.getAllAsync<{ id: number }>(
+      `SELECT id FROM borrowers WHERE area IS NOT NULL AND lower(area) = lower(?)
+       ORDER BY (route_position IS NULL), route_position, full_name COLLATE NOCASE`,
+      [from],
     );
-    if (result.changes === 0) throw new AreaError('notFound');
+    if (moving.length === 0) throw new AreaError('notFound');
+    const base = await db.getFirstAsync<{ m: number | null }>(
+      'SELECT MAX(route_position) AS m FROM borrowers WHERE area = ?',
+      [canonical],
+    );
+    let position = (base?.m ?? 0) + 1;
+    for (const { id } of moving) {
+      await db.runAsync('UPDATE borrowers SET area = ?, route_position = ?, updated_at = ? WHERE id = ?', [
+        canonical,
+        position,
+        now,
+        id,
+      ]);
+      position++;
+    }
   });
 }
 
-/** Clears an area from every borrower who has it (they keep no area). */
+/** Clears an area (and its route position) from every borrower who has it (they keep no area). */
 export async function removeArea(db: SQLiteDatabase, area: string) {
   await db.runAsync(
-    `UPDATE borrowers SET area = NULL, updated_at = ?
+    `UPDATE borrowers SET area = NULL, route_position = NULL, updated_at = ?
      WHERE area IS NOT NULL AND lower(area) = lower(?)`,
     [new Date().toISOString(), area],
   );

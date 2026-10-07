@@ -45,6 +45,7 @@ import { t, type TranslationKey } from '@/i18n';
 import {
   areaFilterOptions,
   groupByArea,
+  groupByAreaRouteOrder,
   groupCollection,
   matchesAreaFilter,
   summarizeCollection,
@@ -57,8 +58,14 @@ import { addDays, formatDisplayDate, todayYmd } from '@/lib/loan';
 import { formatPeso } from '@/lib/money';
 import type { PaymentPreview } from '@/lib/payments';
 import { useThemeColors } from '@/lib/theme';
+import { getAreaOrder } from '@/store/area-order';
 import { setCollectionBadge } from '@/store/collection-badge';
-import { useCollectionGroupBy, setCollectionGroupBy } from '@/store/collection-prefs';
+import {
+  useCollectionGroupBy,
+  setCollectionGroupBy,
+  useWithinAreaSort,
+  setWithinAreaSort,
+} from '@/store/collection-prefs';
 import { useFlagThresholds } from '@/store/flag-settings';
 
 type Segment = 'collect' | 'collected';
@@ -97,6 +104,7 @@ export default function CollectionScreen() {
   const [filter, setFilter] = useState<CollectionFilter>('all');
   const [paidExpanded, setPaidExpanded] = useState(false);
   const groupBy = useCollectionGroupBy();
+  const withinAreaSort = useWithinAreaSort();
   // Area filter is a one-visit-only choice (not remembered after leaving the screen).
   const [areaFilter, setAreaFilter] = useState<CollectionAreaFilter>('all');
 
@@ -269,11 +277,24 @@ export default function CollectionScreen() {
   // ── Derived ──
   const summary = summarizeCollection(rows ?? []);
   const groups = groupCollection(rows ?? [], filter, query, areaFilter);
-  const areaGroups = groupByArea(rows ?? [], filter, query, areaFilter);
-  const areaOptions = areaFilterOptions(rows ?? []);
+  const areaOrder = getAreaOrder();
+  const routeOrderMode = groupBy === 'area' && withinAreaSort === 'route';
+  const areaGroups = !routeOrderMode
+    ? groupByArea(rows ?? [], filter, query, areaFilter, areaOrder)
+    : [];
+  const areaRouteGroups = routeOrderMode
+    ? groupByAreaRouteOrder(rows ?? [], filter, query, areaFilter, areaOrder)
+    : [];
+  const areaOptions = areaFilterOptions(rows ?? [], areaOrder);
   const searching = query.trim() !== '' || filter !== 'all' || areaFilter !== 'all';
-  type ListRow = { row: ClassifiedRow; dimmed: boolean };
-  type ListSection = { key: string; title: string; subtitle?: string; data: ListRow[] };
+  type ListRow = { row: ClassifiedRow; dimmed: boolean; stopNumber?: number; isNext?: boolean };
+  type ListSection = {
+    key: string;
+    title: string;
+    subtitle?: string;
+    area?: string | null;
+    data: ListRow[];
+  };
   const sections: ListSection[] =
     groupBy === 'status'
       ? (
@@ -292,23 +313,50 @@ export default function CollectionScreen() {
                 ? []
                 : s.rows.map((row) => ({ row, dimmed: false })),
           }))
-      : areaGroups
-          .filter((s) => s.toCollectCount > 0 || (paidExpanded && s.paidRows.length > 0))
-          .map((s) => ({
-            key: s.area ?? '\u0000no-area',
-            title: s.area ?? t('collection.noArea'),
-            subtitle: t('collection.areaSubtotal', {
-              count: s.toCollectCount,
-              amount: formatPeso(s.toCollectAmount),
-            }),
-            data: [
-              ...s.rows.map((row) => ({ row, dimmed: false })),
-              ...(paidExpanded ? s.paidRows.map((row) => ({ row, dimmed: true })) : []),
-            ],
-          }));
+      : routeOrderMode
+        ? areaRouteGroups
+            .filter((s) => s.toCollectCount > 0 || (paidExpanded && s.orderedRows.some((o) => o.paid)))
+            .map((s) => {
+              const visible = s.orderedRows.filter((o) => !o.paid || paidExpanded);
+              let nextMarked = false;
+              const data: ListRow[] = visible.map((o, i) => {
+                const isNext = !o.paid && !nextMarked;
+                if (isNext) nextMarked = true;
+                return { row: o.row, dimmed: o.paid, stopNumber: i + 1, isNext };
+              });
+              return {
+                key: s.area ?? '\u0000no-area',
+                title: s.area ?? t('collection.noArea'),
+                subtitle: t('collection.areaSubtotal', {
+                  count: s.toCollectCount,
+                  amount: formatPeso(s.toCollectAmount),
+                }),
+                area: s.area,
+                data,
+              };
+            })
+        : areaGroups
+            .filter((s) => s.toCollectCount > 0 || (paidExpanded && s.paidRows.length > 0))
+            .map((s) => ({
+              key: s.area ?? '\u0000no-area',
+              title: s.area ?? t('collection.noArea'),
+              subtitle: t('collection.areaSubtotal', {
+                count: s.toCollectCount,
+                amount: formatPeso(s.toCollectAmount),
+              }),
+              area: s.area,
+              data: [
+                ...s.rows.map((row) => ({ row, dimmed: false })),
+                ...(paidExpanded ? s.paidRows.map((row) => ({ row, dimmed: true })) : []),
+              ],
+            }));
   const nothingToCollect = groups.overdue.length === 0 && groups.dueToday.length === 0;
   const totalPaidCount =
-    groupBy === 'status' ? groups.paid.length : areaGroups.reduce((s, a) => s + a.paidRows.length, 0);
+    groupBy === 'status'
+      ? groups.paid.length
+      : routeOrderMode
+        ? areaRouteGroups.reduce((s, a) => s + a.orderedRows.filter((o) => o.paid).length, 0)
+        : areaGroups.reduce((s, a) => s + a.paidRows.length, 0);
   // Subtotal for the active area filter, from the SAME summarizeCollection function as the
   // global card — just scoped to that area's rows.
   const areaSubtotal =
@@ -322,6 +370,15 @@ export default function CollectionScreen() {
         {formatDisplayDate(today)}
       </Text>
       <CollectionSummaryCard summary={summary} />
+      <Pressable
+        onPress={() => router.push('/eod')}
+        accessibilityRole="button"
+        className="min-h-12 flex-row items-center justify-center gap-2 rounded-2xl border border-slate-300 active:opacity-70 dark:border-slate-700">
+        <Ionicons name="document-text-outline" size={20} color={colors.primary} />
+        <Text className="text-base font-semibold text-slate-900 dark:text-white">
+          {t('eod.entryCollection')}
+        </Text>
+      </Pressable>
       {cash && (
         <CollectionCashStrip
           cashOnHand={cash.cashOnHand}
@@ -408,6 +465,17 @@ export default function CollectionScreen() {
                       { value: 'area', label: t('collection.groupByArea') },
                     ]}
                   />
+                  {groupBy === 'area' && (
+                    <SegmentedControl
+                      label={t('collection.withinAreaLabel')}
+                      value={withinAreaSort}
+                      onChange={setWithinAreaSort}
+                      options={[
+                        { value: 'route', label: t('collection.withinAreaRoute') },
+                        { value: 'overdue', label: t('collection.withinAreaOverdue') },
+                      ]}
+                    />
+                  )}
                   <View className="min-h-14 flex-row items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 dark:border-slate-700 dark:bg-slate-900">
                     <Ionicons name="search" size={20} color={colors.textMuted} />
                     <TextInput
@@ -578,10 +646,36 @@ export default function CollectionScreen() {
                   />
                 </Pressable>
               )}
+              {groupBy === 'area' && section.area && (
+                <Pressable
+                  onPress={() =>
+                    router.push({ pathname: '/route-order/area', params: { area: section.area! } })
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={t('collection.editRoute')}
+                  hitSlop={8}
+                  className="min-h-12 min-w-12 items-center justify-center active:opacity-60">
+                  <Ionicons name="reorder-four-outline" size={20} color={colors.primary} />
+                </Pressable>
+              )}
             </View>
           )}
           renderItem={({ item }) => (
             <View className={item.dimmed ? 'opacity-50' : undefined}>
+              {item.stopNumber !== undefined && (
+                <View className="mb-1 flex-row items-center gap-2 px-1">
+                  <Text className="text-sm font-bold text-slate-500 dark:text-slate-400">
+                    {t('collection.stopNumber', { number: item.stopNumber })}
+                  </Text>
+                  {item.isNext && (
+                    <View className="rounded-full bg-teal-700 px-2 py-0.5 dark:bg-teal-500">
+                      <Text className="text-xs font-extrabold uppercase text-white">
+                        {t('collection.nextMarker')}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
               <CollectionRowItem
                 row={item.row}
                 busy={saving}

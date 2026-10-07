@@ -33,20 +33,20 @@ function chunk<T extends { id: number }>(rows: T[], map: (r: T) => CsvValue[]) {
 
 export const DATASETS: Record<ExportDataset, DatasetSpec> = {
   borrowers: {
-    header: ['Borrower ID', 'Full name', 'Nickname', 'Phone', 'Address', 'Area', 'Notes', 'Status', 'Archived at', 'Added at'],
+    header: ['Borrower ID', 'Full name', 'Nickname', 'Phone', 'Address', 'Area', 'Route position', 'Notes', 'Status', 'Archived at', 'Added at'],
     ranged: false,
     fetchChunk: async (db, afterId) =>
       chunk(
         await db.getAllAsync<{
           id: number; full_name: string; nickname: string | null; phone: string | null;
-          address: string | null; area: string | null; notes: string | null;
+          address: string | null; area: string | null; route_position: number | null; notes: string | null;
           archived_at: string | null; created_at: string;
         }>(
-          `SELECT id, full_name, nickname, phone, address, area, notes, archived_at, created_at
+          `SELECT id, full_name, nickname, phone, address, area, route_position, notes, archived_at, created_at
            FROM borrowers WHERE id > ? ORDER BY id LIMIT ?`,
           [afterId, CHUNK_SIZE],
         ),
-        (r) => [r.id, r.full_name, r.nickname, r.phone, r.address, r.area, r.notes,
+        (r) => [r.id, r.full_name, r.nickname, r.phone, r.address, r.area, r.route_position, r.notes,
           r.archived_at ? 'archived' : 'active', isoToLocalStamp(r.archived_at), isoToLocalStamp(r.created_at)],
       ),
   },

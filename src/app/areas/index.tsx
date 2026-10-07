@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, type Href } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
@@ -18,6 +18,7 @@ import { AreaError, getAreas, removeArea, renameArea, type AreaSummary } from '@
 import { t } from '@/i18n';
 import { showError } from '@/lib/errors';
 import { useThemeColors } from '@/lib/theme';
+import { removeFromAreaOrder, renameInAreaOrder } from '@/store/area-order';
 
 export default function AreasScreen() {
   const db = useSQLiteContext();
@@ -63,6 +64,8 @@ export default function AreasScreen() {
       setSaving(true);
       try {
         await renameArea(db, renaming.area, trimmed);
+        if (merging) removeFromAreaOrder(renaming.area);
+        else renameInAreaOrder(renaming.area, trimmed);
         closeRename();
         load();
       } catch (err) {
@@ -97,6 +100,7 @@ export default function AreasScreen() {
           onPress: async () => {
             try {
               await removeArea(db, area.area);
+              removeFromAreaOrder(area.area);
               load();
             } catch (err) {
               showError(t('areas.removeFailed'), err);
@@ -114,9 +118,31 @@ export default function AreasScreen() {
         keyExtractor={(a) => a.area}
         contentContainerClassName="gap-3 px-5 pb-10 pt-4"
         ListHeaderComponent={
-          <Text className="pb-1 text-base text-slate-600 dark:text-slate-300">
-            {t('areas.introHint')}
-          </Text>
+          <View className="gap-3 pb-1">
+            <Text className="text-base text-slate-600 dark:text-slate-300">
+              {t('areas.introHint')}
+            </Text>
+            <Pressable
+              // '/route-order' is the collapsed path for src/app/route-order/index.tsx — same
+              // pattern as the working '/cash' (Stack.Screen name="cash/index"). The cast is
+              // only because typed routes haven't regenerated for this brand-new screen yet
+              // (regenerates automatically next time the dev server runs); never push the
+              // literal '/route-order/index' form — that's what produced "Unmatched Route".
+              onPress={() => router.push('/route-order' as Href)}
+              accessibilityRole="button"
+              className="flex-row items-center gap-3 rounded-2xl bg-white p-4 active:opacity-70 dark:bg-slate-900">
+              <Ionicons name="reorder-four-outline" size={22} color={colors.primary} />
+              <View className="flex-1 gap-0.5">
+                <Text className="text-base font-semibold text-slate-900 dark:text-white">
+                  {t('areas.setRouteOrder')}
+                </Text>
+                <Text className="text-sm text-slate-600 dark:text-slate-400">
+                  {t('areas.setRouteOrderHint')}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+            </Pressable>
+          </View>
         }
         ListEmptyComponent={
           areas === null ? (

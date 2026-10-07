@@ -40,8 +40,10 @@ import {
   type DefaultSettlementMode,
 } from '@/store/app-state';
 import { wipeBackupFiles } from '@/services/backup';
+import { clearAreaOrder } from '@/store/area-order';
 import { clearBackupState, getBackupStatus, useBackupStatus } from '@/store/backup-state';
 import { clearCollectionPrefs } from '@/store/collection-prefs';
+import { clearEodPrefs } from '@/store/eodPrefs';
 import {
   clearDocumentSettings,
   FOOTER_NOTE_MAX_LENGTH,
@@ -121,8 +123,12 @@ function confirmReset(db: SQLiteDatabase) {
           // Last-backup info, reminder, restore marker, safety backups and temp files.
           clearBackupState();
           wipeBackupFiles();
-          // Collection tab's Group by preference (not part of any backup).
+          // Collection tab's Group by / Within an area preferences (not part of any backup).
           clearCollectionPrefs();
+          // Route order (area order is whitelisted in backups, but Reset wipes it like everything else).
+          clearAreaOrder();
+          // End of Day report options and remembered counted-cash values (not part of any backup).
+          clearEodPrefs();
           // Receipt/statement settings (footer note, business phone/address, toggles, paper size).
           clearDocumentSettings();
           // Loan detail's Schedule|Calendar preference (not part of any backup).

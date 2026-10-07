@@ -9,6 +9,8 @@ export interface Borrower {
   notes: string | null;
   /** Collection area / route; normalised (trimmed, collapsed whitespace), max 40 chars. */
   area: string | null;
+  /** 1-based rank within `area`'s route; null = no area, or not yet placed on one. */
+  routePosition: number | null;
   /** ISO timestamp; null means the borrower is active (archive = soft delete). */
   archivedAt: string | null;
   createdAt: string;
@@ -30,4 +32,6 @@ export interface GetBorrowersOptions {
   includeArchived?: boolean;
   /** Exact area (case-insensitive); '' = borrowers with no area; omit/undefined = no filter. */
   area?: string;
+  /** 'route' only makes sense together with `area`. Default 'name'. */
+  sort?: 'name' | 'route';
 }

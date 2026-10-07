@@ -1,4 +1,4 @@
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useRef, useState } from 'react';
 import {
@@ -28,8 +28,10 @@ import { formatPeso, parsePesoToCentavos } from '@/lib/money';
 export default function CashCountScreen() {
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
+  // From the End of Day report's "Record adjustment" button: prefills the counted amount.
+  const { counted: countedParam } = useLocalSearchParams<{ counted?: string }>();
   const [cash, setCash] = useState<CashSummary | null>(null);
-  const [countedText, setCountedText] = useState('');
+  const [countedText, setCountedText] = useState(countedParam ?? '');
   const [note, setNote] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);

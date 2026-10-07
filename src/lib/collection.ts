@@ -29,6 +29,7 @@
  *     its payment today keeps it in the Paid section (and in the Collected list).
  */
 
+import { compareByAreaOrder } from './areas';
 import { daysBetween, type PaymentType } from './loan';
 
 import type { LoanStatus } from '@/types/loan';
@@ -41,6 +42,8 @@ export interface CollectionRow {
   nickname: string | null;
   phone: string | null;
   area: string | null;
+  /** 1-based rank within `area`'s route; null = no area, or not yet placed on one. */
+  routePosition: number | null;
   paymentType: PaymentType;
   loanStatus: LoanStatus;
   /** Regular installment amount (daily hulog, or the lump sum). */
@@ -176,14 +179,17 @@ export interface AreaGroupSection {
 }
 
 /**
- * Collection grouped by area instead of status: one section per area, A–Z, "No area" last.
- * Inside each section: overdue first (most overdue first), then due today.
+ * Collection grouped by area instead of status: one section per area, following `order` (areas
+ * not listed sort A–Z after the listed ones; "No area" always last — see compareByAreaOrder).
+ * Inside each section: overdue first (most overdue first), then due today ("Most overdue first"
+ * within-area preference — see groupByAreaRouteOrder for "Route order").
  */
 export function groupByArea(
   rows: ClassifiedRow[],
   filter: CollectionFilter = 'all',
   search = '',
   areaFilter: CollectionAreaFilter = 'all',
+  order: readonly string[] = [],
 ): AreaGroupSection[] {
   const visible = rows.filter(
     (r) => matchesFilter(r, filter) && matchesSearch(r, search) && matchesAreaFilter(r, areaFilter),
@@ -211,11 +217,56 @@ export function groupByArea(
         .sort(byName),
     });
   }
-  return sections.sort((a, b) => {
-    if (a.area === null) return b.area === null ? 0 : 1;
-    if (b.area === null) return -1;
-    return a.area.localeCompare(b.area);
-  });
+  return sections.sort((a, b) => compareByAreaOrder(a, b, order));
+}
+
+export interface AreaRouteSection {
+  area: string | null;
+  toCollectCount: number;
+  toCollectAmount: number;
+  /**
+   * Every row in route order (route_position, NULLs last, then name) — to-collect AND paid rows
+   * interleaved, since in Route order mode a row's status never changes its place in the route.
+   */
+  orderedRows: { row: ClassifiedRow; paid: boolean }[];
+}
+
+const byRoutePosition = (a: ClassifiedRow, b: ClassifiedRow) =>
+  (a.routePosition ?? Infinity) - (b.routePosition ?? Infinity) || byName(a, b);
+
+/**
+ * Collection grouped by area, "Route order" within-area preference: every row (to-collect or
+ * already paid) keeps its place on the saved route; nothing re-sorts by status. The screen hides
+ * paid rows by default and shows them dimmed, in place, when "Show paid" is on.
+ */
+export function groupByAreaRouteOrder(
+  rows: ClassifiedRow[],
+  filter: CollectionFilter = 'all',
+  search = '',
+  areaFilter: CollectionAreaFilter = 'all',
+  order: readonly string[] = [],
+): AreaRouteSection[] {
+  const visible = rows.filter(
+    (r) => matchesFilter(r, filter) && matchesSearch(r, search) && matchesAreaFilter(r, areaFilter),
+  );
+  const byArea = new Map<string | null, ClassifiedRow[]>();
+  for (const r of visible) {
+    const list = byArea.get(r.area);
+    if (list) list.push(r);
+    else byArea.set(r.area, [r]);
+  }
+  const sections: AreaRouteSection[] = [];
+  for (const [area, list] of byArea) {
+    const ordered = [...list].sort(byRoutePosition);
+    const toCollectRows = ordered.filter((r) => r.toCollect > 0);
+    sections.push({
+      area,
+      toCollectCount: toCollectRows.length,
+      toCollectAmount: toCollectRows.reduce((sum, r) => sum + r.toCollect, 0),
+      orderedRows: ordered.map((row) => ({ row, paid: row.toCollect <= 0 })),
+    });
+  }
+  return sections.sort((a, b) => compareByAreaOrder(a, b, order));
 }
 
 export interface AreaFilterOption {
@@ -225,19 +276,18 @@ export interface AreaFilterOption {
   toCollectCount: number;
 }
 
-/** Areas present among loans with something to collect, A–Z, "No area" last — for the filter chips. */
-export function areaFilterOptions(rows: ClassifiedRow[]): AreaFilterOption[] {
+/** Areas present among loans with something to collect, following `order` — for the filter chips. */
+export function areaFilterOptions(
+  rows: ClassifiedRow[],
+  order: readonly string[] = [],
+): AreaFilterOption[] {
   const counts = new Map<string | null, number>();
   for (const r of rows) {
     if (r.toCollect <= 0) continue;
     counts.set(r.area, (counts.get(r.area) ?? 0) + 1);
   }
   const options = [...counts.entries()].map(([area, toCollectCount]) => ({ area, toCollectCount }));
-  return options.sort((a, b) => {
-    if (a.area === null) return b.area === null ? 0 : 1;
-    if (b.area === null) return -1;
-    return a.area.localeCompare(b.area);
-  });
+  return options.sort((a, b) => compareByAreaOrder(a, b, order));
 }
 
 export interface CollectionSummary {

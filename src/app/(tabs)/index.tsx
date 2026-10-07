@@ -207,12 +207,23 @@ function Dashboard({
       {data.cash.cashOnHand === null ? (
         <CashSetupCard compact />
       ) : (
-        <CashCard
-          cashOnHandCentavos={data.cash.cashOnHand}
-          withdrawnTodayCentavos={data.cash.withdrawalsToday}
-          expensesTodayCentavos={data.cash.expensesToday}
-          onPress={() => router.push('/cash')}
-        />
+        <View className="gap-2">
+          <CashCard
+            cashOnHandCentavos={data.cash.cashOnHand}
+            withdrawnTodayCentavos={data.cash.withdrawalsToday}
+            expensesTodayCentavos={data.cash.expensesToday}
+            onPress={() => router.push('/cash')}
+          />
+          <Pressable
+            onPress={() => router.push('/eod')}
+            accessibilityRole="button"
+            className="flex-row items-center justify-center gap-1 py-1 active:opacity-60">
+            <Ionicons name="document-text-outline" size={16} color={colors.primary} />
+            <Text className="text-sm font-semibold text-teal-700 dark:text-teal-300">
+              {t('eod.entryHome')}
+            </Text>
+          </Pressable>
+        </View>
       )}
 
       {/* 4. Needs attention: Flagged and Critical only */}

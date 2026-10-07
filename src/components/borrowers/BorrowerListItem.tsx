@@ -15,6 +15,8 @@ type BorrowerListItemProps = {
   /** Reliability tier badge (New / Reliable / Fair / Risky) — shown for every borrower. */
   reliabilityBadge?: { label: string; tone: ChipTone } | null;
   area?: string | null;
+  /** Shown only when the list is sorted by route (see Borrowers tab's area-filtered sort toggle). */
+  routeNumber?: number | null;
   onPress: () => void;
 };
 
@@ -23,6 +25,7 @@ export function BorrowerListItem({
   nickname,
   phone,
   area,
+  routeNumber,
   archived,
   badge,
   reliabilityBadge,
@@ -34,11 +37,19 @@ export function BorrowerListItem({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${fullName}${archived ? ', archived' : ''}${badge ? `, ${badge.label}` : ''}`}
+      accessibilityLabel={`${routeNumber ? `Stop ${routeNumber}, ` : ''}${fullName}${archived ? ', archived' : ''}${badge ? `, ${badge.label}` : ''}`}
       className="min-h-20 flex-row items-center gap-3 rounded-2xl bg-white px-4 py-3 active:opacity-70 dark:bg-slate-900">
-      <View className={archived ? 'opacity-50' : undefined}>
-        <InitialsAvatar name={fullName} />
-      </View>
+      {routeNumber ? (
+        <View className="h-10 w-10 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+          <Text className="text-base font-extrabold text-slate-700 dark:text-slate-200">
+            {routeNumber}
+          </Text>
+        </View>
+      ) : (
+        <View className={archived ? 'opacity-50' : undefined}>
+          <InitialsAvatar name={fullName} />
+        </View>
+      )}
       <View className="flex-1 gap-0.5">
         <View className="flex-row items-center gap-2">
           <Text

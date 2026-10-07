@@ -255,6 +255,17 @@ export default function ReportsScreen() {
         </View>
       )}
 
+      <Pressable
+        onPress={() => router.push('/eod')}
+        accessibilityRole="button"
+        className="min-h-16 flex-row items-center gap-3 rounded-2xl bg-white p-4 active:opacity-70 dark:bg-slate-900">
+        <Ionicons name="document-text-outline" size={26} color={colors.primary} />
+        <Text className="flex-1 text-base font-semibold text-slate-900 dark:text-white">
+          {t('eod.entryReports')}
+        </Text>
+        <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+      </Pressable>
+
       {/* Live number, not tied to the range */}
       <Pressable
         onPress={() => router.navigate({ pathname: '/borrowers', params: { filter: 'flagged' } })}

@@ -48,6 +48,8 @@ export default function BorrowersScreen() {
   const [reliability, setReliability] = useState<Map<number, ReliabilityResult>>(new Map());
   const [areas, setAreas] = useState<AreaSummary[]>([]);
   const [areaFilter, setAreaFilter] = useState<string | null>(null); // null = All areas
+  // Only meaningful with an area filter active; the full list (no filter) is always A-Z.
+  const [areaSort, setAreaSort] = useState<'route' | 'name'>('route');
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState('');
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -79,7 +81,12 @@ export default function BorrowersScreen() {
     try {
       const today = todayYmd();
       const [rows, behind, areaRows] = await Promise.all([
-        getBorrowers(db, { search, includeArchived, area: areaFilter === null ? undefined : areaFilter }),
+        getBorrowers(db, {
+          search,
+          includeArchived,
+          area: areaFilter === null ? undefined : areaFilter,
+          sort: areaFilter !== null && areaSort === 'route' ? 'route' : 'name',
+        }),
         getFlaggedBorrowers(db, today, { thresholds, minSeverity: 'late' }),
         getAreas(db),
       ]);
@@ -101,7 +108,7 @@ export default function BorrowersScreen() {
       console.error('[Load borrowers failed]', error);
       if (current === requestId.current) setError(true);
     }
-  }, [db, search, includeArchived, areaFilter, thresholds]);
+  }, [db, search, includeArchived, areaFilter, areaSort, thresholds]);
 
   // Reloads when the tab is focused (e.g. after adding/editing) and when search/filter change.
   useFocusEffect(
@@ -256,6 +263,45 @@ export default function BorrowersScreen() {
               </View>
             )}
 
+            {/* Route order | A-Z — only meaningful with an area filter active */}
+            {areaFilter !== null && (
+              <View className="flex-row flex-wrap items-center gap-2" accessibilityRole="radiogroup">
+                {(['route', 'name'] as const).map((value) => {
+                  const selected = areaSort === value;
+                  return (
+                    <Pressable
+                      key={value}
+                      onPress={() => setAreaSort(value)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      className={
+                        selected
+                          ? 'min-h-10 justify-center rounded-full bg-slate-700 px-3 dark:bg-slate-200'
+                          : 'min-h-10 justify-center rounded-full border border-slate-300 bg-white px-3 active:opacity-70 dark:border-slate-700 dark:bg-slate-900'
+                      }>
+                      <Text
+                        className={
+                          selected
+                            ? 'text-sm font-bold text-white dark:text-slate-900'
+                            : 'text-sm font-semibold text-slate-700 dark:text-slate-200'
+                        }>
+                        {value === 'route' ? t('borrowers.sortRoute') : t('borrowers.sortAtoZ')}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+                <Pressable
+                  onPress={() => router.push({ pathname: '/route-order/area', params: { area: areaFilter } })}
+                  accessibilityRole="button"
+                  className="min-h-10 flex-row items-center gap-1 rounded-full border border-slate-300 px-3 active:opacity-70 dark:border-slate-700">
+                  <Ionicons name="reorder-four-outline" size={16} color={colors.primary} />
+                  <Text className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    {t('borrowers.reorderAction')}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+
             {/* Count + archived toggle */}
             <View className="min-h-12 flex-row items-center justify-between">
               <Text className="text-base font-semibold text-slate-700 dark:text-slate-200">
@@ -316,6 +362,9 @@ export default function BorrowersScreen() {
             nickname={item.nickname}
             phone={item.phone}
             area={item.area}
+            routeNumber={
+              areaFilter !== null && areaSort === 'route' ? item.routePosition : null
+            }
             archived={item.archivedAt !== null}
             badge={badgeFor(flags.get(item.id))}
             reliabilityBadge={

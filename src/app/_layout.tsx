@@ -156,9 +156,18 @@ export default function RootLayout() {
                   options={{ headerShown: true, title: t('reports.title') }}
                 />
                 <Stack.Screen
+                  name="eod"
+                  options={{ headerShown: true, title: t('eod.screenTitle') }}
+                />
+                <Stack.Screen
                   name="areas/index"
                   options={{ headerShown: true, title: t('areas.screenTitle') }}
                 />
+                <Stack.Screen
+                  name="route-order/index"
+                  options={{ headerShown: true, title: t('route.screenTitle') }}
+                />
+                <Stack.Screen name="route-order/area" options={{ headerShown: true }} />
                 <Stack.Screen
                   name="presets/index"
                   options={{ headerShown: true, title: t('presets.screenTitle') }}

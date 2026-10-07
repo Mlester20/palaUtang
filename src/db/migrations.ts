@@ -294,6 +294,25 @@ const MIGRATIONS: Migration[] = [
   );
   CREATE UNIQUE INDEX idx_loan_presets_name ON loan_presets (name COLLATE NOCASE);
   `,
+
+  // v8: route order. borrowers.route_position is the borrower's 1-based rank within their own
+  // area (NULL = no area, or an area borrower not yet placed on a route). Existing borrowers are
+  // initialised 1..N per area, A-Z, so nothing changes visually for data that already exists.
+  // A correlated-subquery rank (not a window function) so this works on any SQLite bundled by
+  // expo-sqlite, no matter how old.
+  `
+  ALTER TABLE borrowers ADD COLUMN route_position INTEGER;
+  CREATE INDEX idx_borrowers_area_route_position ON borrowers (area, route_position);
+  UPDATE borrowers
+  SET route_position = (
+    SELECT COUNT(*) FROM borrowers b2
+    WHERE b2.area = borrowers.area
+      AND (b2.full_name COLLATE NOCASE < borrowers.full_name COLLATE NOCASE
+           OR (b2.full_name COLLATE NOCASE = borrowers.full_name COLLATE NOCASE
+               AND b2.id < borrowers.id))
+  ) + 1
+  WHERE area IS NOT NULL;
+  `,
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

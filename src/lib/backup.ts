@@ -24,6 +24,7 @@ export const BACKUP_SETTING_KEYS = [
   'receipts.showBalance',
   'statements.showInterest',
   'statements.paperSize',
+  'areas.order',
 ] as const;
 
 export const SAFETY_BACKUPS_TO_KEEP = 3;
