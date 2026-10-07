@@ -153,7 +153,7 @@ function ToggleRow({
       <Switch
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ true: colors.primary, false: '#cbd5e1' }}
+        trackColor={{ true: colors.primary, false: colors.switchTrackOff }}
         thumbColor="#ffffff"
       />
     </View>

@@ -114,7 +114,7 @@ export function SavePresetSheet({ visible, onClose, currentValues, onSaved }: Sa
           value={name}
           onChangeText={setName}
           placeholder={t('presets.namePlaceholder')}
-          placeholderTextColor="#94a3b8"
+          placeholderTextColor={colors.textMuted}
           className="min-h-14 rounded-xl border border-slate-300 bg-white px-4 text-lg text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
         />
       </View>
@@ -130,7 +130,7 @@ export function SavePresetSheet({ visible, onClose, currentValues, onSaved }: Sa
         <Switch
           value={includePrincipal}
           onValueChange={setIncludePrincipal}
-          trackColor={{ true: colors.primary, false: '#cbd5e1' }}
+          trackColor={{ true: colors.primary, false: colors.switchTrackOff }}
           thumbColor="#ffffff"
         />
       </View>

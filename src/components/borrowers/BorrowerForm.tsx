@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { showError } from '@/lib/errors';
 import { MAX_AREA_LENGTH, validateArea } from '@/lib/areas';
 import { isValidPhPhone } from '@/lib/phone';
+import { useThemeColors } from '@/lib/theme';
 import type { BorrowerInput } from '@/types/borrower';
 
 type BorrowerFormProps = {
@@ -217,6 +218,7 @@ type FieldProps = TextInputProps & {
 };
 
 function Field({ label, hint, required, error, multiline, ...inputProps }: FieldProps) {
+  const colors = useThemeColors();
   return (
     <View className="gap-2">
       <View className="flex-row items-baseline gap-2">
@@ -229,7 +231,7 @@ function Field({ label, hint, required, error, multiline, ...inputProps }: Field
       <TextInput
         {...inputProps}
         multiline={multiline}
-        placeholderTextColor="#94a3b8"
+        placeholderTextColor={colors.textMuted}
         textAlignVertical={multiline ? 'top' : 'center'}
         className={
           error

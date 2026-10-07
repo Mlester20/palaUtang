@@ -13,10 +13,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { t } from '@/i18n';
+import { useThemeColors } from '@/lib/theme';
 import { CURRENCIES, saveProfile, type CurrencyCode } from '@/store/app-state';
 
 export default function SetupScreen() {
   const insets = useSafeAreaInsets();
+  const colors = useThemeColors();
   const [businessName, setBusinessName] = useState('');
   const [currency, setCurrency] = useState<CurrencyCode>('PHP');
   const [penaltyEnabled, setPenaltyEnabled] = useState(false);
@@ -72,7 +74,7 @@ export default function SetupScreen() {
               value={businessName}
               onChangeText={setBusinessName}
               placeholder="e.g. Aling Nena Lending"
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={colors.textMuted}
               autoCapitalize="words"
               returnKeyType="done"
               className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
@@ -123,7 +125,7 @@ export default function SetupScreen() {
               <Switch
                 value={penaltyEnabled}
                 onValueChange={setPenaltyEnabled}
-                trackColor={{ true: '#0f766e', false: '#cbd5e1' }}
+                trackColor={{ true: colors.primary, false: colors.switchTrackOff }}
                 thumbColor="#ffffff"
               />
             </View>
@@ -139,7 +141,7 @@ export default function SetupScreen() {
                     value={penaltyAmount}
                     onChangeText={setPenaltyAmount}
                     placeholder="0.00"
-                    placeholderTextColor="#94a3b8"
+                    placeholderTextColor={colors.textMuted}
                     keyboardType="decimal-pad"
                     className="flex-1 px-2 py-3 text-base text-slate-900 dark:text-white"
                   />

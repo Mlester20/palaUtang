@@ -16,6 +16,7 @@ import {
 import { getAreas, type AreaSummary } from '@/db/areas';
 import { BorrowerListItem } from '@/components/borrowers/BorrowerListItem';
 import { EmptyState } from '@/components/empty-state';
+import { useTabBarInset } from '@/components/navigation/FloatingTabBar';
 import { flagChipLabel } from '@/components/flags/flag-text';
 import { tierBadge } from '@/components/reliability/reliability-text';
 import { getBorrowers } from '@/db/borrowers';
@@ -37,6 +38,7 @@ export default function BorrowersScreen() {
   const db = useSQLiteContext();
   const colors = useThemeColors();
   const thresholds = useFlagThresholds();
+  const tabBarInset = useTabBarInset();
   // Home / Reports open this tab with ?filter=flagged.
   const { filter: filterParam } = useLocalSearchParams<{ filter?: string }>();
   const [filter, setFilter] = useState<ListFilter>(() =>
@@ -148,8 +150,8 @@ export default function BorrowersScreen() {
         data={visible ?? []}
         keyExtractor={(b) => String(b.id)}
         keyboardShouldPersistTaps="handled"
-        // pb-28 leaves room so the last row isn't hidden behind the + button.
-        contentContainerClassName="gap-3 px-5 pb-28 pt-4"
+        contentContainerClassName="gap-3 px-5 pt-4"
+        contentContainerStyle={{ paddingBottom: tabBarInset }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -167,7 +169,7 @@ export default function BorrowersScreen() {
                 value={query}
                 onChangeText={setQuery}
                 placeholder="Search name, nickname, or phone"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={colors.textMuted}
                 returnKeyType="search"
                 autoCorrect={false}
                 className="flex-1 py-3 text-lg text-slate-900 dark:text-white"
@@ -264,7 +266,7 @@ export default function BorrowersScreen() {
                 <Switch
                   value={includeArchived}
                   onValueChange={setIncludeArchived}
-                  trackColor={{ true: colors.primary, false: '#cbd5e1' }}
+                  trackColor={{ true: colors.primary, false: colors.switchTrackOff }}
                   thumbColor="#ffffff"
                 />
               </View>
@@ -326,12 +328,13 @@ export default function BorrowersScreen() {
         )}
       />
 
-      {/* Add borrower */}
+      {/* Add borrower — sits above the floating tab bar (bar inset + 16dp breathing room). */}
       <Pressable
         onPress={() => router.push('/borrower/new')}
         accessibilityRole="button"
         accessibilityLabel="Add borrower"
-        className="absolute bottom-6 right-5 h-16 w-16 items-center justify-center rounded-full bg-teal-700 shadow-lg active:bg-teal-800 dark:bg-teal-500">
+        style={{ bottom: tabBarInset + 16 }}
+        className="absolute right-5 h-16 w-16 items-center justify-center rounded-full bg-teal-700 shadow-lg active:bg-teal-800 dark:bg-teal-500">
         <Ionicons name="add" size={34} color="#ffffff" />
       </Pressable>
     </View>

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
+import { useTabBarInset } from '@/components/navigation/FloatingTabBar';
 import { t } from '@/i18n';
 
 type UndoSnackbarProps = {
@@ -23,6 +24,7 @@ export function UndoSnackbar({
   onReceipt,
   durationMs = 6000,
 }: UndoSnackbarProps) {
+  const tabBarInset = useTabBarInset();
   useEffect(() => {
     if (!message || undoing) return;
     const timer = setTimeout(onHide, durationMs);
@@ -33,7 +35,8 @@ export function UndoSnackbar({
 
   return (
     <View
-      className="absolute bottom-4 left-4 right-4 min-h-14 flex-row items-center gap-3 rounded-2xl bg-slate-900 px-4 py-2 shadow-lg dark:bg-slate-100"
+      style={{ bottom: tabBarInset + 16 }}
+      className="absolute left-4 right-4 min-h-14 flex-row items-center gap-3 rounded-2xl bg-slate-900 px-4 py-2 shadow-lg dark:bg-slate-100"
       accessibilityLiveRegion="polite">
       <Text className="flex-1 text-base font-semibold text-white dark:text-slate-900" numberOfLines={2}>
         {message.text}

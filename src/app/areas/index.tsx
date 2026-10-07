@@ -172,7 +172,7 @@ export default function AreasScreen() {
           onChangeText={setNewName}
           autoCapitalize="words"
           placeholder={t('areas.renamePlaceholder')}
-          placeholderTextColor="#94a3b8"
+          placeholderTextColor={colors.textMuted}
           className="min-h-14 rounded-xl border border-slate-300 bg-white px-4 text-lg text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
         />
         <View className="flex-row gap-3 pt-2">

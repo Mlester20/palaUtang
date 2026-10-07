@@ -43,7 +43,7 @@ export function BorrowerPicker({
               value={query}
               onChangeText={onQueryChange}
               placeholder="Search name, nickname, or phone"
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={colors.textMuted}
               autoCorrect={false}
               autoFocus
               className="flex-1 py-3 text-lg text-slate-900 dark:text-white"

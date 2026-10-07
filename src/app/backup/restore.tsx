@@ -155,7 +155,7 @@ export default function RestoreScreen() {
                   autoCapitalize="characters"
                   autoCorrect={false}
                   placeholder={RESTORE_CONFIRM_WORD}
-                  placeholderTextColor="#94a3b8"
+                  placeholderTextColor={colors.textMuted}
                   className="min-h-14 rounded-xl border border-slate-300 bg-white px-4 text-xl text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
               </View>

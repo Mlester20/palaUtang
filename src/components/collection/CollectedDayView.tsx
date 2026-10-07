@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 
 import type { DatedPayment } from '@/db/collection';
+import { useTabBarInset } from '@/components/navigation/FloatingTabBar';
 import { t } from '@/i18n';
 import { isCashPayment } from '@/lib/cash';
 import { formatTime } from '@/lib/date';
@@ -40,6 +41,7 @@ export function CollectedDayView({
   header,
 }: CollectedDayViewProps) {
   const colors = useThemeColors();
+  const tabBarInset = useTabBarInset();
   // Cash only: a netted settlement was deducted from a renewal, no money changed hands.
   const total = payments
     .filter(isCashPayment)
@@ -49,7 +51,8 @@ export function CollectedDayView({
     <FlatList
       data={payments}
       keyExtractor={(p) => String(p.id)}
-      contentContainerClassName="gap-3 px-5 pb-10"
+      contentContainerClassName="gap-3 px-5"
+      contentContainerStyle={{ paddingBottom: tabBarInset }}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}

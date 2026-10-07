@@ -1,28 +1,11 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useEffect, type ComponentProps } from 'react';
-import { AppState, type ColorValue } from 'react-native';
+import { useEffect } from 'react';
+import { AppState } from 'react-native';
 
+import { FloatingTabBar } from '@/components/navigation/FloatingTabBar';
 import { useThemeColors } from '@/lib/theme';
 import { refreshCollectionBadge, useCollectionBadge } from '@/store/collection-badge';
-
-type IconName = ComponentProps<typeof Ionicons>['name'];
-
-/** Filled icon when the tab is active, outline when it isn't. */
-function tabIcon(name: IconName, outline: IconName) {
-  return function TabIcon({
-    focused,
-    color,
-    size,
-  }: {
-    focused: boolean;
-    color: ColorValue;
-    size: number;
-  }) {
-    return <Ionicons name={focused ? name : outline} color={color} size={size} />;
-  };
-}
 
 export default function TabsLayout() {
   const colors = useThemeColors();
@@ -42,11 +25,10 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenListeners={{ focus: () => refreshCollectionBadge(db) }}
+      // Icons/badge/active-state are drawn by FloatingTabBar itself (reads route.name + each
+      // screen's options.tabBarBadge below); tabBarIcon/tabBarStyle options are unused now.
+      tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textMuted,
-        tabBarStyle: { backgroundColor: colors.background, borderTopColor: colors.border },
-        tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
         headerTitleStyle: { fontWeight: '700' },
@@ -55,24 +37,14 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         // Home draws its own greeting header (dashboard), so the default one is hidden.
-        options={{ title: 'Home', headerShown: false, tabBarIcon: tabIcon('home', 'home-outline') }}
+        options={{ title: 'Home', headerShown: false }}
       />
       <Tabs.Screen
         name="collection"
-        options={{
-          title: 'Collection',
-          tabBarIcon: tabIcon('cash', 'cash-outline'),
-          tabBarBadge: toCollect > 0 ? toCollect : undefined,
-        }}
+        options={{ title: 'Collection', tabBarBadge: toCollect > 0 ? toCollect : undefined }}
       />
-      <Tabs.Screen
-        name="borrowers"
-        options={{ title: 'Borrowers', tabBarIcon: tabIcon('people', 'people-outline') }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{ title: 'Settings', tabBarIcon: tabIcon('settings', 'settings-outline') }}
-      />
+      <Tabs.Screen name="borrowers" options={{ title: 'Borrowers' }} />
+      <Tabs.Screen name="settings" options={{ title: 'Settings' }} />
     </Tabs>
   );
 }

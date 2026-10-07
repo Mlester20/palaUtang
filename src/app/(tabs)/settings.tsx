@@ -6,6 +6,7 @@ import { Alert, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 
 import { lastBackupText } from '@/components/backup/backup-text';
 import { FormField } from '@/components/FormField';
+import { useTabBarInset } from '@/components/navigation/FloatingTabBar';
 import { ReceiptSheet } from '@/components/receipts/ReceiptSheet';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Stepper } from '@/components/Stepper';
@@ -50,6 +51,12 @@ import {
   setShowBalance,
   useDocumentSettings,
 } from '@/store/document-settings';
+import {
+  clearAppearanceSetting,
+  setAppearanceSetting,
+  useAppearanceSetting,
+  type AppearanceSetting,
+} from '@/store/appearance';
 import { clearFlagSettings, setFlagThresholds, useFlagThresholds } from '@/store/flag-settings';
 import { clearLoanViewPref } from '@/store/loan-view-prefs';
 
@@ -120,6 +127,8 @@ function confirmReset(db: SQLiteDatabase) {
           clearDocumentSettings();
           // Loan detail's Schedule|Calendar preference (not part of any backup).
           clearLoanViewPref();
+          // Appearance (Light/Dark/System) back to the default, Light (not part of any backup).
+          clearAppearanceSetting();
           // No router.replace needed: the root layout guards close (tabs) and send the user
           // back to onboarding as soon as the profile is cleared, removing tabs from history.
           resetAppState();
@@ -132,6 +141,7 @@ function confirmReset(db: SQLiteDatabase) {
 export default function SettingsScreen() {
   const db = useSQLiteContext();
   const colors = useThemeColors();
+  const tabBarInset = useTabBarInset();
   const { profile } = useAppState();
   const lock = useAppLockSettings();
   const [hasScreenLock, setHasScreenLock] = useState<boolean | null>(null);
@@ -189,7 +199,12 @@ export default function SettingsScreen() {
   return (
     <ScrollView
       className="flex-1 bg-slate-50 dark:bg-slate-950"
-      contentContainerClassName="gap-6 p-6">
+      contentContainerClassName="gap-6 p-6"
+      contentContainerStyle={{ paddingBottom: tabBarInset }}>
+      <Section title={t('settings.appearanceSection')}>
+        <AppearanceSettingsRows />
+      </Section>
+
       <Section title="Business Profile">
         <Row label="Name" value={profile.businessName} />
         <Row label="Currency" value={`${symbol} ${profile.currency}`} />
@@ -206,7 +221,7 @@ export default function SettingsScreen() {
       <Section title={t('settings.appLockSection')}>
         {lockEnabled && hasScreenLock === false && (
           <View className="flex-row gap-3 rounded-xl bg-amber-50 p-4 dark:bg-amber-950">
-            <Ionicons name="warning" size={22} color="#d97706" />
+            <Ionicons name="warning" size={22} color={colors.warning} />
             <Text className="flex-1 text-base text-amber-900 dark:text-amber-100">
               {t('settings.screenLockRemovedBanner')}
             </Text>
@@ -226,7 +241,7 @@ export default function SettingsScreen() {
             value={lockEnabled}
             onValueChange={onToggleLock}
             disabled={lockBusy}
-            trackColor={{ true: colors.primary, false: '#cbd5e1' }}
+            trackColor={{ true: colors.primary, false: colors.switchTrackOff }}
             thumbColor="#ffffff"
           />
         </View>
@@ -428,6 +443,63 @@ function daysText(count: number) {
   return count === 1 ? t('flags.oneDay') : t('flags.days', { count });
 }
 
+const APPEARANCE_OPTIONS: {
+  value: AppearanceSetting;
+  label: TranslationKey;
+  swatch: readonly [string, string];
+}[] = [
+  { value: 'light', label: 'settings.appearanceLight', swatch: ['#ffffff', '#0f172a'] },
+  { value: 'dark', label: 'settings.appearanceDark', swatch: ['#0f172a', '#ffffff'] },
+  { value: 'system', label: 'settings.appearanceSystem', swatch: ['#ffffff', '#0f172a'] },
+];
+
+/** Applies instantly (src/store/appearance.ts); each option shows a small background/text swatch. */
+function AppearanceSettingsRows() {
+  const active = useAppearanceSetting();
+
+  return (
+    <View className="flex-row gap-3">
+      {APPEARANCE_OPTIONS.map((option) => {
+        const selected = active === option.value;
+        const [swatchBg, swatchFg] = option.swatch;
+        return (
+          <Pressable
+            key={option.value}
+            onPress={() => setAppearanceSetting(option.value)}
+            accessibilityRole="radio"
+            accessibilityState={{ selected }}
+            className={
+              selected
+                ? 'flex-1 items-center gap-2 rounded-2xl border-2 border-teal-600 bg-teal-50 p-3 dark:border-teal-400 dark:bg-teal-950'
+                : 'flex-1 items-center gap-2 rounded-2xl border border-slate-200 p-3 active:opacity-70 dark:border-slate-700'
+            }>
+            {option.value === 'system' ? (
+              <View className="h-10 w-10 flex-row overflow-hidden rounded-full border border-slate-300 dark:border-slate-600">
+                <View className="flex-1" style={{ backgroundColor: '#ffffff' }} />
+                <View className="flex-1" style={{ backgroundColor: '#0f172a' }} />
+              </View>
+            ) : (
+              <View
+                className="h-10 w-10 items-center justify-center rounded-full border border-slate-300 dark:border-slate-600"
+                style={{ backgroundColor: swatchBg }}>
+                <View className="h-3 w-3 rounded-full" style={{ backgroundColor: swatchFg }} />
+              </View>
+            )}
+            <Text
+              className={
+                selected
+                  ? 'text-sm font-bold text-teal-800 dark:text-teal-200'
+                  : 'text-sm font-semibold text-slate-700 dark:text-slate-200'
+              }>
+              {t(option.label)}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 /**
  * Two steppers. A change is saved right away when the pair is valid (1 ≤ flag < critical ≤ 60);
  * otherwise the draft stays on screen with an inline error and nothing is saved.
@@ -580,7 +652,7 @@ function ReceiptSettingsRows() {
         <Switch
           value={settings.showBalance}
           onValueChange={setShowBalance}
-          trackColor={{ true: colors.primary, false: '#cbd5e1' }}
+          trackColor={{ true: colors.primary, false: colors.switchTrackOff }}
           thumbColor="#ffffff"
         />
       </View>

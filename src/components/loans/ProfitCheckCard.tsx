@@ -63,8 +63,7 @@ export function ProfitCheckCard({
 }: ProfitCheckCardProps) {
   const colors = useThemeColors();
   const style = LEVEL[level];
-  const iconColor =
-    level === 'loss' ? colors.danger : level === 'normal' ? colors.success : '#d97706'; // amber-600
+  const iconColor = level === 'loss' ? colors.danger : level === 'normal' ? colors.success : colors.warning;
 
   const message = {
     loss: `You lend ${formatPeso(principalCentavos)} but will only collect ${formatPeso(totalPayableCentavos)}. Short by ${formatPeso(-profitCentavos)}.`,

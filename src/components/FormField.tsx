@@ -1,5 +1,7 @@
 import { Text, TextInput, View, type TextInputProps } from 'react-native';
 
+import { useThemeColors } from '@/lib/theme';
+
 type FormFieldProps = TextInputProps & {
   label: string;
   hint?: string;
@@ -19,6 +21,7 @@ export function FormField({
   multiline,
   ...inputProps
 }: FormFieldProps) {
+  const colors = useThemeColors();
   return (
     <View className="gap-2">
       <View className="flex-row flex-wrap items-baseline gap-x-2">
@@ -39,7 +42,7 @@ export function FormField({
         <TextInput
           {...inputProps}
           multiline={multiline}
-          placeholderTextColor="#94a3b8"
+          placeholderTextColor={colors.textMuted}
           textAlignVertical={multiline ? 'top' : 'center'}
           className="flex-1 py-3 text-xl text-slate-900 dark:text-white"
           style={multiline ? { minHeight: 80 } : undefined}

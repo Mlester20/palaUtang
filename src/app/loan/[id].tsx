@@ -413,7 +413,7 @@ export default function LoanDetailScreen() {
           }
           accessibilityRole="button"
           className="min-h-14 flex-row items-center justify-center gap-2 rounded-2xl border-2 border-violet-400 bg-white active:opacity-70 dark:border-violet-700 dark:bg-slate-900">
-          <Ionicons name="flag-outline" size={22} color="#7c3aed" />
+          <Ionicons name="flag-outline" size={22} color={colors.accent} />
           <Text className="text-lg font-bold text-violet-700 dark:text-violet-300">
             {t('settlement.settleEarly')}
           </Text>
@@ -683,13 +683,14 @@ export default function LoanDetailScreen() {
 }
 
 function LinkRow({ text, onPress }: { text: string; onPress: () => void }) {
+  const colors = useThemeColors();
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="link"
       className="min-h-12 flex-row items-center justify-between rounded-2xl bg-white px-4 active:opacity-70 dark:bg-slate-900">
       <Text className="text-base font-semibold text-sky-700 dark:text-sky-300">{text}</Text>
-      <Ionicons name="chevron-forward" size={20} color="#0369a1" />
+      <Ionicons name="chevron-forward" size={20} color={colors.info} />
     </Pressable>
   );
 }

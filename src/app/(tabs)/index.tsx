@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { lastBackupText } from '@/components/backup/backup-text';
 import { CashSetupCard } from '@/components/cash/CashSetupCard';
 import { collectionChip } from '@/components/collection/collection-chip';
+import { useTabBarInset } from '@/components/navigation/FloatingTabBar';
 import {
   BackupReminderCard,
   CashCard,
@@ -71,6 +72,7 @@ function weekBars(data: DashboardSnapshot): DailyEarning[] {
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const tabBarInset = useTabBarInset();
   const colors = useThemeColors();
   const { profile } = useAppState();
   const { data, error, refreshing, refresh, thresholds } = useDashboard();
@@ -91,7 +93,7 @@ export default function HomeScreen() {
         />
       }>
       {/* The tab header is hidden on Home, so the greeting clears the status bar itself. */}
-      <View className="gap-7 px-5 pb-10" style={{ paddingTop: insets.top + 16 }}>
+      <View className="gap-7 px-5" style={{ paddingTop: insets.top + 16, paddingBottom: tabBarInset }}>
         {/* 1. Header */}
         <View className="flex-row items-center gap-4">
           <View className="flex-1 gap-1">
@@ -132,6 +134,7 @@ function Dashboard({
   thresholds: FlagThresholds;
   highlightIndex: number;
 }) {
+  const colors = useThemeColors();
   const { summary, stats, flagged } = data;
   const dueToday = dueTodayItems(data, thresholds);
   const backup = useBackupStatus();
@@ -221,7 +224,7 @@ function Dashboard({
         />
         {flagged.length === 0 ? (
           <View className="flex-row items-center gap-3 rounded-2xl bg-white p-4 dark:bg-slate-900">
-            <Ionicons name="checkmark-circle" size={28} color="#16a34a" />
+            <Ionicons name="checkmark-circle" size={28} color={colors.success} />
             <View className="flex-1 gap-0.5">
               <Text className="text-base font-semibold text-slate-900 dark:text-white">
                 {t('dashboard.noFlaggedTitle')}

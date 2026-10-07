@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, Text, View } from 'react-native';
 
 import { t } from '@/i18n';
+import { useThemeColors } from '@/lib/theme';
 
 type BackupReminderCardProps = {
   /** "Never backed up" / "Last backup exported 9 days ago". */
@@ -12,10 +13,11 @@ type BackupReminderCardProps = {
 
 /** Home: nudge to back up (dismiss hides it for 24 hours). */
 export function BackupReminderCard({ message, onBackup, onDismiss }: BackupReminderCardProps) {
+  const colors = useThemeColors();
   return (
     <View className="gap-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950">
       <View className="flex-row items-start gap-3">
-        <Ionicons name="cloud-upload" size={26} color="#d97706" />
+        <Ionicons name="cloud-upload" size={26} color={colors.warning} />
         <View className="flex-1 gap-0.5">
           <Text className="text-base font-bold text-amber-900 dark:text-amber-100">
             {t('backup.reminderTitle')}

@@ -48,6 +48,10 @@ export const en = {
     ok: 'OK',
   },
   settings: {
+    appearanceSection: 'Appearance',
+    appearanceLight: 'Light',
+    appearanceDark: 'Dark',
+    appearanceSystem: 'System default',
     appLockSection: 'App Lock',
     requireUnlock: 'Require unlock to open the app',
     requireUnlockHint: 'Uses your phone’s fingerprint, face, or PIN/pattern.',

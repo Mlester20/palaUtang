@@ -23,6 +23,7 @@ import { CollectSheet } from '@/components/collection/CollectSheet';
 import { RowActionsSheet } from '@/components/collection/RowActionsSheet';
 import { UndoSnackbar } from '@/components/collection/UndoSnackbar';
 import { EmptyState } from '@/components/empty-state';
+import { useTabBarInset } from '@/components/navigation/FloatingTabBar';
 import { VoidPaymentModal } from '@/components/payments/VoidPaymentModal';
 import { ReceiptSheet } from '@/components/receipts/ReceiptSheet';
 import { SegmentedControl } from '@/components/SegmentedControl';
@@ -82,6 +83,7 @@ export default function CollectionScreen() {
   const db = useSQLiteContext();
   const colors = useThemeColors();
   const thresholds = useFlagThresholds();
+  const tabBarInset = useTabBarInset();
 
   const [segment, setSegment] = useState<Segment>('collect');
   // `today` is recomputed on every load, so the screen follows midnight while the app stays open.
@@ -373,7 +375,8 @@ export default function CollectionScreen() {
           keyExtractor={(item) => String(item.row.loanId)}
           keyboardShouldPersistTaps="handled"
           stickySectionHeadersEnabled={false}
-          contentContainerClassName="gap-3 px-5 pb-28"
+          contentContainerClassName="gap-3 px-5"
+          contentContainerStyle={{ paddingBottom: tabBarInset }}
           initialNumToRender={12}
           windowSize={9}
           refreshControl={
@@ -411,7 +414,7 @@ export default function CollectionScreen() {
                       value={query}
                       onChangeText={setQuery}
                       placeholder={t('collection.searchPlaceholder')}
-                      placeholderTextColor="#94a3b8"
+                      placeholderTextColor={colors.textMuted}
                       autoCorrect={false}
                       className="flex-1 py-3 text-lg text-slate-900 dark:text-white"
                     />

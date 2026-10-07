@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 
 import { t } from '@/i18n';
+import { useThemeColors } from '@/lib/theme';
 
 type VoidPaymentModalProps = {
   visible: boolean;
@@ -38,6 +39,7 @@ export function VoidPaymentModal({
   onCancel,
   onConfirm,
 }: VoidPaymentModalProps) {
+  const colors = useThemeColors();
   const [reason, setReason] = useState('');
   const [showError, setShowError] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -98,7 +100,7 @@ export function VoidPaymentModal({
                   if (text.trim()) setShowError(false);
                 }}
                 placeholder={t('payments.voidReasonPlaceholder')}
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={colors.textMuted}
                 autoFocus
                 editable={!busy}
                 className={

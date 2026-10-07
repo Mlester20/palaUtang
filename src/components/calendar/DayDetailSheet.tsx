@@ -6,6 +6,7 @@ import { t } from '@/i18n';
 import { collectionDaysBetween, formatDisplayDate } from '@/lib/loan';
 import type { CalendarDay } from '@/lib/loanCalendar';
 import { formatPeso } from '@/lib/money';
+import { useThemeColors } from '@/lib/theme';
 import type { PaymentType } from '@/lib/loan';
 import type { LoanStatus } from '@/types/loan';
 
@@ -81,6 +82,7 @@ export function DayDetailSheet({
   onReceipt,
 }: DayDetailSheetProps) {
   const isDark = useColorScheme() === 'dark';
+  const colors = useThemeColors();
 
   return (
     <BottomSheet visible={day !== null} onClose={onClose}>
@@ -127,7 +129,7 @@ export function DayDetailSheet({
 
           {day.isSettlementDay && (
             <View className="flex-row items-center gap-2 rounded-xl bg-violet-50 px-4 py-3 dark:bg-violet-950">
-              <Ionicons name="flag" size={20} color={isDark ? '#c4b5fd' : '#7c3aed'} />
+              <Ionicons name="flag" size={20} color={colors.accent} />
               <Text className="text-base font-bold text-violet-800 dark:text-violet-200">
                 {t('calendar.earlyPayoffMarker')}
               </Text>

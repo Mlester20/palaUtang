@@ -3,6 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 
 import { t } from '@/i18n';
 import { formatPeso } from '@/lib/money';
+import { useThemeColors } from '@/lib/theme';
 
 type CollectionCashStripProps = {
   /** null = cash tracking not set up (no cash numbers are shown then). */
@@ -22,13 +23,14 @@ export function CollectionCashStrip({
   onOpenCash,
   onSetup,
 }: CollectionCashStripProps) {
+  const colors = useThemeColors();
   if (cashOnHand === null) {
     return (
       <Pressable
         onPress={onSetup}
         accessibilityRole="button"
         className="min-h-12 flex-row items-center justify-center gap-2 rounded-2xl border border-dashed border-teal-400 px-4 active:opacity-70 dark:border-teal-700">
-        <Ionicons name="wallet-outline" size={20} color="#0d9488" />
+        <Ionicons name="wallet-outline" size={20} color={colors.primary} />
         <Text className="text-base font-semibold text-teal-700 dark:text-teal-300">
           {t('cash.setupCardTitle')}
         </Text>
@@ -71,7 +73,7 @@ export function CollectionCashStrip({
         accessibilityRole="button"
         accessibilityLabel={t('cash.withdrawExpense')}
         className="w-28 items-center justify-center gap-1 rounded-2xl border-2 border-teal-700 bg-white px-2 active:opacity-70 dark:border-teal-400 dark:bg-slate-900">
-        <Ionicons name="remove-circle-outline" size={22} color="#0f766e" />
+        <Ionicons name="remove-circle-outline" size={22} color={colors.primary} />
         <Text className="text-center text-xs font-bold text-teal-800 dark:text-teal-200">
           {t('cash.withdrawExpense')}
         </Text>

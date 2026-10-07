@@ -1,3 +1,7 @@
+// Applies the Light/Dark/System override synchronously, before anything below renders (see
+// src/store/appearance.ts for why this single import is enough to drive both useColorScheme()
+// and every NativeWind `dark:` variant — no flash, no other wiring needed).
+import '@/store/appearance';
 import '@/global.css';
 
 // Per-weight imports so only these 3 font files are bundled (the package index pulls in all 18).
@@ -6,7 +10,9 @@ import { Poppins_600SemiBold } from '@expo-google-fonts/poppins/600SemiBold';
 import { Poppins_700Bold } from '@expo-google-fonts/poppins/700Bold';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { useFonts } from 'expo-font';
+import { NavigationBar } from 'expo-navigation-bar';
 import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
 import { SQLiteProvider, type SQLiteDatabase } from 'expo-sqlite';
 import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
@@ -70,6 +76,11 @@ export default function RootLayout() {
   // lock gate -> onboarding (first run only) -> setup (first run only) -> (tabs) and screens above.
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      {/* Global, theme-matched system bars. Always mounted (even before fonts/splash finish) so
+          there's no status-bar-color flash. OnboardingCarousel mounts its own StatusBar/
+          NavigationBar per slide on top of this; the most recently mounted one wins. */}
+      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+      <NavigationBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
       {/* The lock comes first: while locked, nothing below (not even the database) is rendered. */}
       {/* Nothing is rendered until fonts are ready; the splash overlay covers the wait. */}
       {fontsReady && (

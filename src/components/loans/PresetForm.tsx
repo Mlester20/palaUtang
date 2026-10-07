@@ -155,7 +155,7 @@ export function PresetForm({ initialValues, submitLabel, onSubmit }: PresetFormP
             <Switch
               value={includePrincipal}
               onValueChange={setIncludePrincipal}
-              trackColor={{ true: colors.primary, false: '#cbd5e1' }}
+              trackColor={{ true: colors.primary, false: colors.switchTrackOff }}
               thumbColor="#ffffff"
             />
           </View>
@@ -210,7 +210,7 @@ export function PresetForm({ initialValues, submitLabel, onSubmit }: PresetFormP
               <Switch
                 value={skipSundays}
                 onValueChange={setSkipSundays}
-                trackColor={{ true: colors.primary, false: '#cbd5e1' }}
+                trackColor={{ true: colors.primary, false: colors.switchTrackOff }}
                 thumbColor="#ffffff"
               />
             </View>

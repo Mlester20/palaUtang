@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { Easing, Keyframe } from 'react-native-reanimated';
 
+import { useThemeColors } from '@/lib/theme';
+
 const DURATION = 600;
 // Never keep the splash up longer than this, even if the image never reports it was drawn.
 const MAX_SPLASH_MS = 2000;
@@ -32,6 +34,9 @@ const splashKeyframe = new Keyframe({
  * image is drawn AND the app is ready, so text never flashes in the default font.
  */
 export function AnimatedSplashOverlay({ ready = true }: { ready?: boolean }) {
+  // Matches the native splash's resolved background (app.json's light/dark backgroundColor) so
+  // the handoff from native splash → this overlay has no visible seam, in either theme.
+  const colors = useThemeColors();
   const [animate, setAnimate] = useState(false);
   const [visible, setVisible] = useState(true);
   const [imageShown, setImageShown] = useState(false);
@@ -88,18 +93,17 @@ export function AnimatedSplashOverlay({ ready = true }: { ready?: boolean }) {
     <Animated.View
       entering={splashKeyframe.duration(DURATION)}
       pointerEvents="none"
-      style={styles.splashOverlay}>
+      style={[styles.splashOverlay, { backgroundColor: colors.background }]}>
       {image}
     </Animated.View>
   ) : (
-    <View style={styles.splashOverlay}>{image}</View>
+    <View style={[styles.splashOverlay, { backgroundColor: colors.background }]}>{image}</View>
   );
 }
 
 const styles = StyleSheet.create({
   splashOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: '#FAFBFB',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,

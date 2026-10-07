@@ -483,7 +483,7 @@ export default function NewLoanScreen() {
             borrowerFlag &&
             borrowerFlag.totalOverdue > 0 && (
               <View className="flex-row gap-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950">
-                <Ionicons name="warning" size={22} color="#d97706" />
+                <Ionicons name="warning" size={22} color={colors.warning} />
                 <Text className="flex-1 text-base text-amber-900 dark:text-amber-100">
                   {t('reliability.overdueBanner', {
                     name: borrower?.fullName ?? '',
@@ -640,7 +640,7 @@ export default function NewLoanScreen() {
                   setSkipSundays(v);
                   unapplyPreset();
                 }}
-                trackColor={{ true: colors.primary, false: '#cbd5e1' }}
+                trackColor={{ true: colors.primary, false: colors.switchTrackOff }}
                 thumbColor="#ffffff"
               />
             </View>
