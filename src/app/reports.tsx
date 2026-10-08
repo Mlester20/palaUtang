@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, useFocusEffect } from 'expo-router';
+import { router, Stack, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
@@ -8,6 +8,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CashSetupCard } from '@/components/cash/CashSetupCard';
 import { categoryLabel } from '@/components/cash/cash-text';
 import { DateField } from '@/components/DateField';
+import { Money, useMoneyText } from '@/components/Money';
+import { PrivacyToggle } from '@/components/PrivacyToggle';
 import { DailyReportRow } from '@/components/reports/DailyReportRow';
 import { ReportStatCard } from '@/components/reports/ReportStatCard';
 import { SegmentedControl } from '@/components/SegmentedControl';
@@ -23,7 +25,6 @@ import { getProfitSummary } from '@/db/reports';
 import { t, type TranslationKey } from '@/i18n';
 import { computeNetProfit, type CashKind } from '@/lib/cash';
 import { formatDisplayDate, todayYmd } from '@/lib/loan';
-import { formatPeso } from '@/lib/money';
 import type { ProfitSummary } from '@/lib/profit';
 import {
   monthRange,
@@ -50,6 +51,7 @@ export default function ReportsScreen() {
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
   const colors = useThemeColors();
+  const moneyText = useMoneyText();
   const thresholds = useFlagThresholds();
 
   const [preset, setPreset] = useState<ReportPreset>('thisMonth');
@@ -173,13 +175,13 @@ export default function ReportsScreen() {
             <ReportStatCard
               tone={computeNetProfit(summary.interestEarned, outflows.expensesTotal) < 0 ? 'danger' : 'primary'}
               label={t('reports.netProfit')}
-              value={formatPeso(computeNetProfit(summary.interestEarned, outflows.expensesTotal))}
+              value={moneyText(computeNetProfit(summary.interestEarned, outflows.expensesTotal), 'total')}
               hint={t('reports.netProfitHint')}
             />
           )}
           <ReportStatCard
             label={t('reports.interestEarned')}
-            value={formatPeso(summary.interestEarned)}
+            value={moneyText(summary.interestEarned, 'total')}
             hint={t('reports.interestEarnedHint')}
           />
           {outflows && (
@@ -206,7 +208,7 @@ export default function ReportsScreen() {
             ) : (
               <ReportStatCard
                 label={t('reports.cashAtEnd', { date: formatDisplayDate(cashAtEnd.asOfDate) })}
-                value={formatPeso(cashAtEnd.cashOnHand)}
+                value={moneyText(cashAtEnd.cashOnHand, 'total')}
                 tone={cashAtEnd.cashOnHand < 0 ? 'danger' : 'default'}
               />
             ))}
@@ -214,13 +216,13 @@ export default function ReportsScreen() {
             <View className="flex-1">
               <ReportStatCard
                 label={t('reports.cashCollected')}
-                value={formatPeso(summary.cashCollected)}
+                value={moneyText(summary.cashCollected, 'total')}
               />
             </View>
             <View className="flex-1">
               <ReportStatCard
                 label={t('reports.principalReturned')}
-                value={formatPeso(summary.principalReturned)}
+                value={moneyText(summary.principalReturned, 'total')}
               />
             </View>
           </View>
@@ -228,13 +230,13 @@ export default function ReportsScreen() {
             <View className="flex-1">
               <ReportStatCard
                 label={t('reports.discountsGiven')}
-                value={formatPeso(summary.discountsGiven)}
+                value={moneyText(summary.discountsGiven, 'total')}
               />
             </View>
             <View className="flex-1">
               <ReportStatCard
                 label={t('reports.netted')}
-                value={formatPeso(summary.nettedSettlements)}
+                value={moneyText(summary.nettedSettlements, 'total')}
                 hint={t('reports.nettedHint')}
               />
             </View>
@@ -243,13 +245,13 @@ export default function ReportsScreen() {
             <ReportStatCard
               tone="danger"
               label={t('reports.unrecovered')}
-              value={`-${formatPeso(summary.unrecoveredPrincipal)}`}
+              value={`-${moneyText(summary.unrecoveredPrincipal, 'total')}`}
               hint={t('reports.unrecoveredHint')}
             />
           )}
           <ReportStatCard
             label={t('reports.newLoans')}
-            value={formatPeso(summary.newLoansReleased.amount)}
+            value={moneyText(summary.newLoansReleased.amount, 'total')}
             hint={loansText(summary.newLoansReleased.count)}
           />
         </View>
@@ -304,6 +306,7 @@ export default function ReportsScreen() {
 
   return (
     <View className="flex-1 bg-slate-50 dark:bg-slate-950">
+      <Stack.Screen options={{ headerRight: () => <PrivacyToggle /> }} />
       <FlatList
         data={showData && hasActivity ? days : []}
         keyExtractor={(d) => d.date}
@@ -356,7 +359,7 @@ function CategoryCard({
     <View className="gap-2 rounded-2xl bg-white p-4 dark:bg-slate-900">
       <View className="flex-row items-baseline justify-between gap-3">
         <Text className="flex-1 text-sm font-semibold text-slate-600 dark:text-slate-300">{title}</Text>
-        <Text className="text-2xl font-extrabold text-slate-900 dark:text-white">{formatPeso(total)}</Text>
+        <Money value={total} kind="total" className="text-2xl font-extrabold text-slate-900 dark:text-white" />
       </View>
       <Text className="text-xs text-slate-500 dark:text-slate-400">{hint}</Text>
       {lines.map((line) => (
@@ -364,9 +367,11 @@ function CategoryCard({
           <Text className="text-base text-slate-700 dark:text-slate-200">
             {categoryLabel(kind, line.category)}
           </Text>
-          <Text className="text-base font-semibold text-slate-900 dark:text-white">
-            {formatPeso(line.amount)}
-          </Text>
+          <Money
+            value={line.amount}
+            kind="total"
+            className="text-base font-semibold text-slate-900 dark:text-white"
+          />
         </View>
       ))}
     </View>

@@ -3,9 +3,9 @@ import { memo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { StatusChip } from '@/components/dashboard';
+import { useMoneyText } from '@/components/Money';
 import { t } from '@/i18n';
 import type { CashEntry, LedgerItem } from '@/lib/cash';
-import { formatPeso } from '@/lib/money';
 import { useThemeColors } from '@/lib/theme';
 import type { ChipTone } from '@/types/dashboard';
 
@@ -27,6 +27,7 @@ type LedgerItemRowProps = {
 };
 
 function Amount({ value, direction, struck }: { value: number; direction: 'in' | 'out'; struck?: boolean }) {
+  const moneyText = useMoneyText();
   return (
     <Text
       className={
@@ -36,7 +37,7 @@ function Amount({ value, direction, struck }: { value: number; direction: 'in' |
             ? 'text-lg font-bold text-green-700 dark:text-green-400'
             : 'text-lg font-bold text-slate-900 dark:text-white'
       }>
-      {`${direction === 'in' ? '+' : '−'}${formatPeso(value)}`}
+      {`${direction === 'in' ? '+' : '−'}${moneyText(value, 'total')}`}
     </Text>
   );
 }
@@ -44,6 +45,7 @@ function Amount({ value, direction, struck }: { value: number; direction: 'in' |
 /** One ledger line: derived (collections, releases: read-only links) or a manual entry. */
 function LedgerItemRowBase({ item, onOpenCollection, onOpenLoan, onVoid }: LedgerItemRowProps) {
   const colors = useThemeColors();
+  const moneyText = useMoneyText();
 
   if (item.type === 'collection') {
     return (
@@ -80,8 +82,8 @@ function LedgerItemRowBase({ item, onOpenCollection, onOpenLoan, onVoid }: Ledge
           <Text className="text-sm text-slate-500 dark:text-slate-400">
             {r.nettedAmount
               ? t('cash.rowRenewal', {
-                  principal: formatPeso(r.principal),
-                  netted: formatPeso(r.nettedAmount),
+                  principal: moneyText(r.principal, 'total'),
+                  netted: moneyText(r.nettedAmount, 'total'),
                 })
               : t('cash.loanRef', { id: r.loanId })}
           </Text>

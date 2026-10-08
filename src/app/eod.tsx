@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, useFocusEffect } from 'expo-router';
+import { router, Stack, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useRef, useState } from 'react';
 import {
@@ -19,6 +19,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DateField } from '@/components/DateField';
 import { SkeletonBlock } from '@/components/dashboard';
 import { EodView, EOD_WIDTH_DP } from '@/components/eod/EodView';
+import { useMoneyText } from '@/components/Money';
+import { PrivacyToggle } from '@/components/PrivacyToggle';
 import { getCashCollectedTotal } from '@/db/cash-collected';
 import { getCashLedger, getCashSetup, getLoanReleases } from '@/db/cash';
 import {
@@ -36,7 +38,7 @@ import { computeNetProfit } from '@/lib/cash';
 import { buildCashLines, hasNoActivity, type EodReportData } from '@/lib/eodReport';
 import { showError } from '@/lib/errors';
 import { addDays, formatDisplayDate, todayYmd } from '@/lib/loan';
-import { formatPeso, parsePesoToCentavos } from '@/lib/money';
+import { parsePesoToCentavos } from '@/lib/money';
 import { computeAppliedBreakdown } from '@/lib/receipt';
 import { useThemeColors } from '@/lib/theme';
 import { copyEodAsText, shareEodAsText, shareEodPng } from '@/services/eod';
@@ -130,6 +132,7 @@ export default function EodScreen() {
   const db = useSQLiteContext();
   const colors = useThemeColors();
   const insets = useSafeAreaInsets();
+  const moneyText = useMoneyText();
   const options = useEodOptions();
   const thresholds = useFlagThresholds();
   const businessName = getAppStateSnapshot().profile?.businessName ?? '';
@@ -235,6 +238,7 @@ export default function EodScreen() {
       className="flex-1 bg-slate-50 dark:bg-slate-950"
       contentContainerClassName="gap-5 p-5"
       contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
+      <Stack.Screen options={{ headerRight: () => <PrivacyToggle /> }} />
       {/* Date selector */}
       <View className="gap-3">
         <View className="flex-row items-center gap-2">
@@ -300,7 +304,7 @@ export default function EodScreen() {
           <>
             {/* Collection */}
             <Card title={t('eod.collectionSection')}>
-              <Hero label={t('eod.cashCollected')} value={formatPeso(report.collection.cashCollected)} />
+              <Hero label={t('eod.cashCollected')} value={moneyText(report.collection.cashCollected, 'total')} />
               <Line
                 label={t('eod.paymentsCount', {
                   count: report.collection.paymentCount,
@@ -317,25 +321,25 @@ export default function EodScreen() {
                         ? t('eod.appliedRecovered')
                         : t('eod.appliedAdvance')
                   }
-                  value={formatPeso(line.amount)}
+                  value={moneyText(line.amount, 'total')}
                 />
               ))}
               {report.collection.earlyPayoffCount > 0 && (
                 <Line
                   label={t('eod.earlyPayoffs', {
                     count: report.collection.earlyPayoffCount,
-                    amount: formatPeso(report.collection.earlyPayoffAmount),
+                    amount: moneyText(report.collection.earlyPayoffAmount, 'total'),
                   })}
                 />
               )}
               {report.collection.discountGiven > 0 && (
-                <Line label={t('eod.discountGiven')} value={formatPeso(report.collection.discountGiven)} />
+                <Line label={t('eod.discountGiven')} value={moneyText(report.collection.discountGiven, 'total')} />
               )}
               {report.collection.nettedCount > 0 && (
                 <Line
                   label={t('eod.appliedToRenewals', {
                     count: report.collection.nettedCount,
-                    amount: formatPeso(report.collection.nettedAmount),
+                    amount: moneyText(report.collection.nettedAmount, 'total'),
                   })}
                 />
               )}
@@ -344,7 +348,7 @@ export default function EodScreen() {
                   report.collection.missedLoanCount > 0
                     ? t('eod.missedThatDay', {
                         count: report.collection.missedLoanCount,
-                        amount: formatPeso(report.collection.missedAmount),
+                        amount: moneyText(report.collection.missedAmount, 'total'),
                       })
                     : t('eod.missedNone')
                 }
@@ -359,8 +363,8 @@ export default function EodScreen() {
                   report.newLoans.count > 0
                     ? t('eod.newLoansLine', {
                         count: report.newLoans.count,
-                        principal: formatPeso(report.newLoans.principal),
-                        released: formatPeso(report.newLoans.cashReleased),
+                        principal: moneyText(report.newLoans.principal, 'total'),
+                        released: moneyText(report.newLoans.cashReleased, 'total'),
                       })
                     : t('eod.newLoansNone')
                 }
@@ -372,30 +376,43 @@ export default function EodScreen() {
               <Card title={t('eod.cashSection')}>
                 {report.cash.available ? (
                   <>
-                    <Line label={t('eod.cashOpening')} value={formatPeso(report.cash.opening)} />
-                    <Line label={t('eod.cashCollected')} value={`+${formatPeso(report.cash.parts.collected)}`} />
+                    <Line label={t('eod.cashOpening')} value={moneyText(report.cash.opening, 'total')} />
+                    <Line
+                      label={t('eod.cashCollected')}
+                      value={`+${moneyText(report.cash.parts.collected, 'total')}`}
+                    />
                     {report.cash.parts.capitalIn > 0 && (
-                      <Line label={t('eod.cashCapitalIn')} value={`+${formatPeso(report.cash.parts.capitalIn)}`} />
+                      <Line
+                        label={t('eod.cashCapitalIn')}
+                        value={`+${moneyText(report.cash.parts.capitalIn, 'total')}`}
+                      />
                     )}
-                    <Line label={t('eod.cashReleased')} value={`-${formatPeso(report.cash.parts.released)}`} />
-                    <Line label={t('eod.cashWithdrawals')} value={`-${formatPeso(report.cash.parts.withdrawals)}`} />
+                    <Line
+                      label={t('eod.cashReleased')}
+                      value={`-${moneyText(report.cash.parts.released, 'total')}`}
+                    />
+                    <Line
+                      label={t('eod.cashWithdrawals')}
+                      value={`-${moneyText(report.cash.parts.withdrawals, 'total')}`}
+                    />
                     {report.cash.expensesByCategory.map((e) => (
                       <Line
                         key={e.category}
                         label={t('eod.cashExpenseCategory', { category: e.category })}
-                        value={`-${formatPeso(e.amount)}`}
+                        value={`-${moneyText(e.amount, 'total')}`}
                       />
                     ))}
                     {(report.cash.parts.adjustmentsIn > 0 || report.cash.parts.adjustmentsOut > 0) && (
                       <Line
                         label={t('eod.cashAdjustments')}
-                        value={`${report.cash.parts.adjustmentsIn >= report.cash.parts.adjustmentsOut ? '+' : '-'}${formatPeso(
+                        value={`${report.cash.parts.adjustmentsIn >= report.cash.parts.adjustmentsOut ? '+' : '-'}${moneyText(
                           Math.abs(report.cash.parts.adjustmentsIn - report.cash.parts.adjustmentsOut),
+                          'total',
                         )}`}
                       />
                     )}
                     <View className="h-px bg-slate-200 dark:bg-slate-800" />
-                    <Line label={t('eod.cashClosing')} value={formatPeso(report.cash.closingExpected)} bold />
+                    <Line label={t('eod.cashClosing')} value={moneyText(report.cash.closingExpected, 'total')} bold />
 
                     <View className="gap-2 pt-2">
                       <Text className="text-sm font-semibold text-slate-600 dark:text-slate-300">
@@ -419,8 +436,8 @@ export default function EodScreen() {
                           {diff === 0
                             ? t('eod.cashMatches')
                             : diff > 0
-                              ? t('eod.cashOver', { amount: formatPeso(diff) })
-                              : t('eod.cashShort', { amount: formatPeso(-diff) })}
+                              ? t('eod.cashOver', { amount: moneyText(diff, 'total') })
+                              : t('eod.cashShort', { amount: moneyText(-diff, 'total') })}
                         </Text>
                       )}
                       {isToday && diff !== null && diff !== 0 && (
@@ -450,9 +467,12 @@ export default function EodScreen() {
             {/* Profit */}
             {options.includeProfit && report.profit && (
               <Card title={t('eod.profitSection')}>
-                <Line label={t('eod.profitInterest')} value={formatPeso(report.profit.interestEarned)} />
-                <Line label={t('eod.profitPrincipal')} value={formatPeso(report.profit.principalReturned)} />
-                <Line label={t('eod.profitNet')} value={formatPeso(report.profit.netOfExpenses)} bold />
+                <Line label={t('eod.profitInterest')} value={moneyText(report.profit.interestEarned, 'total')} />
+                <Line
+                  label={t('eod.profitPrincipal')}
+                  value={moneyText(report.profit.principalReturned, 'total')}
+                />
+                <Line label={t('eod.profitNet')} value={moneyText(report.profit.netOfExpenses, 'total')} bold />
               </Card>
             )}
 
@@ -490,6 +510,9 @@ export default function EodScreen() {
             </Card>
 
             <Text className="px-1 text-xs text-slate-500 dark:text-slate-400">{t('eod.liveNote')}</Text>
+            <Text className="px-1 text-xs font-semibold text-amber-700 dark:text-amber-400">
+              {t('privacy.sharedNotice')}
+            </Text>
 
             {/* Share bar */}
             <View className="gap-2">

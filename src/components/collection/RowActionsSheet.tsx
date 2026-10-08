@@ -3,9 +3,9 @@ import type { ComponentProps } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { BottomSheet } from '@/components/BottomSheet';
+import { useMoneyText } from '@/components/Money';
 import { t } from '@/i18n';
 import type { ClassifiedRow } from '@/lib/collection';
-import { formatPeso } from '@/lib/money';
 import { useThemeColors } from '@/lib/theme';
 
 type RowActionsSheetProps = {
@@ -28,6 +28,7 @@ export function RowActionsSheet({
   onOpenLoan,
   onOpenCalendar,
 }: RowActionsSheetProps) {
+  const moneyText = useMoneyText();
   // Today's amount = what is still owed for today, or one regular hulog when only overdue.
   const todayAmount = row
     ? Math.min(
@@ -47,7 +48,7 @@ export function RowActionsSheet({
           {showTodayAmount && (
             <Action
               icon="today-outline"
-              label={t('collection.actionTodayAmount', { amount: formatPeso(todayAmount) })}
+              label={t('collection.actionTodayAmount', { amount: moneyText(todayAmount, 'borrower') })}
               hint={row.overdueOutstanding > 0 ? t('collection.actionTodayAmountHint') : undefined}
               onPress={() => onTodayAmount(row, todayAmount)}
             />

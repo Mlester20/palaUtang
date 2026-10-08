@@ -17,6 +17,7 @@ import { ReceiptSheet } from '@/components/receipts/ReceiptSheet';
 import { StatementOptionsSheet } from '@/components/statements/StatementOptionsSheet';
 import { DayDetailSheet } from '@/components/calendar/DayDetailSheet';
 import { LoanCalendar } from '@/components/calendar/LoanCalendar';
+import { Money, useMoneyText } from '@/components/Money';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { canCancelLoan, cancelLoan, getInstallmentsByLoan, getLoanById } from '@/db/loans';
 import { getLoanCalendarData } from '@/db/loanCalendar';
@@ -38,7 +39,6 @@ import {
   todayYmd,
 } from '@/lib/loan';
 import type { LoanCalendarResult } from '@/lib/loanCalendar';
-import { formatPeso } from '@/lib/money';
 import { useThemeColors } from '@/lib/theme';
 import type { LoanBalanceSummary } from '@/lib/payments';
 import { shareStatement } from '@/services/statement';
@@ -69,6 +69,7 @@ export default function LoanDetailScreen() {
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
   const colors = useThemeColors();
+  const moneyText = useMoneyText();
   const params = useLocalSearchParams<{ id: string; view?: string }>();
   const id = Number(params.id);
   const [data, setData] = useState<LoadedLoan | null | undefined>(undefined);
@@ -201,7 +202,7 @@ export default function LoanDetailScreen() {
   const confirmCancel = () => {
     Alert.alert(
       'Cancel this loan?',
-      `The ${formatPeso(loan.principal)} loan for ${loan.borrowerName} will be marked cancelled. Its schedule is kept for your records. This cannot be undone.`,
+      `The ${moneyText(loan.principal, 'borrower')} loan for ${loan.borrowerName} will be marked cancelled. Its schedule is kept for your records. This cannot be undone.`,
       [
         { text: 'Keep loan', style: 'cancel' },
         {
@@ -256,25 +257,26 @@ export default function LoanDetailScreen() {
           <Text className="text-sm font-semibold text-slate-600 dark:text-slate-300">
             Total payable
           </Text>
-          <Text
+          <Money
+            value={loan.totalPayable}
+            kind="borrower"
             className="text-3xl font-extrabold text-slate-900 dark:text-white"
             numberOfLines={1}
-            adjustsFontSizeToFit>
-            {formatPeso(loan.totalPayable)}
-          </Text>
+            adjustsFontSizeToFit
+          />
         </View>
 
         <View className="gap-2">
-          <Row label="Principal" value={formatPeso(loan.principal)} />
+          <Row label="Principal" value={moneyText(loan.principal, 'borrower')} />
           <Row
             label="Profit (tubo)"
-            value={`${formatPeso(profit.profitCentavos)} · ${formatPercent(profit.ratePercent)} (≈${formatPercent(profit.monthlyRatePercent)}/mo)`}
+            value={`${moneyText(profit.profitCentavos, 'borrower')} · ${formatPercent(profit.ratePercent)} (≈${formatPercent(profit.monthlyRatePercent)}/mo)`}
           />
           {loan.paymentType === 'daily' ? (
             <>
               <Row
                 label="Hulog"
-                value={`${formatPeso(loan.installmentAmount)} × ${loan.numberOfInstallments} days`}
+                value={`${moneyText(loan.installmentAmount, 'borrower')} × ${loan.numberOfInstallments} days`}
               />
               <Row label="Skip Sundays" value={loan.skipSundays ? 'Yes' : 'No'} />
             </>
@@ -297,7 +299,7 @@ export default function LoanDetailScreen() {
             {loan.paidCount}/{loan.totalCount} paid
           </Text>
           <Text className="text-base text-slate-600 dark:text-slate-300">
-            {formatPeso(loan.amountPaid)} collected
+            <Money value={loan.amountPaid} kind="borrower" /> collected
           </Text>
         </View>
         <ProgressBar value={progress} />
@@ -309,13 +311,13 @@ export default function LoanDetailScreen() {
           {t('payments.summaryTitle')}
         </Text>
         <View className="flex-row gap-3">
-          <Stat label={t('payments.paid')} value={formatPeso(summary.totalPaid)} />
-          <Stat label={t('payments.balance')} value={formatPeso(summary.balance)} strong />
+          <Stat label={t('payments.paid')} value={moneyText(summary.totalPaid, 'borrower')} />
+          <Stat label={t('payments.balance')} value={moneyText(summary.balance, 'borrower')} strong />
         </View>
         <View className="flex-row gap-3">
           <Stat
             label={t('payments.overdue')}
-            value={formatPeso(summary.overdueAmount)}
+            value={moneyText(summary.overdueAmount, 'borrower')}
             danger={summary.overdueAmount > 0}
           />
           {loan.paymentType === 'daily' ? (
@@ -345,7 +347,7 @@ export default function LoanDetailScreen() {
               ? t('payments.fullyPaid')
               : summary.nextDue
                 ? t('payments.nextDueValue', {
-                    amount: formatPeso(summary.nextDue.amount),
+                    amount: moneyText(summary.nextDue.amount, 'borrower'),
                     date: formatShortDate(summary.nextDue.date),
                   })
                 : t('payments.none')
@@ -366,12 +368,12 @@ export default function LoanDetailScreen() {
           {settlementPayment && (
             <Row
               label={t('settlement.settlementAmount')}
-              value={`${formatPeso(settlementPayment.amount)}${
+              value={`${moneyText(settlementPayment.amount, 'borrower')}${
                 settlementPayment.isNetted ? ` · ${t('settlement.labelNetted')}` : ''
               }`}
             />
           )}
-          <Row label={t('settlement.discount')} value={formatPeso(loan.discountAmount)} />
+          <Row label={t('settlement.discount')} value={moneyText(loan.discountAmount, 'borrower')} />
           <Row label={t('settlement.mode')} value={modeLabel(loan.settlementMode)} />
           {loan.closedReason && <Row label={t('settlement.note')} value={loan.closedReason} />}
           {settlementPayment && (
@@ -477,7 +479,7 @@ export default function LoanDetailScreen() {
                           ? 'text-lg font-bold text-slate-400 line-through dark:text-slate-500'
                           : 'text-lg font-bold text-slate-900 dark:text-white'
                       }>
-                      {formatPeso(p.amount)}
+                      <Money value={p.amount} kind="borrower" />
                     </Text>
                     <Text className="text-sm text-slate-600 dark:text-slate-300">
                       {formatDisplayDate(p.paidOn)}
@@ -619,26 +621,27 @@ export default function LoanDetailScreen() {
                 )}
                 {item.waivedAmount > 0 && (
                   <Text className="text-xs font-semibold text-violet-700 dark:text-violet-300">
-                    {t('settlement.waived', { amount: formatPeso(item.waivedAmount) })}
+                    {t('settlement.waived', { amount: moneyText(item.waivedAmount, 'borrower') })}
                   </Text>
                 )}
                 {item.amountPaid > 0 && item.amountPaid < item.amountDue && (
                   <Text className="text-xs text-slate-500 dark:text-slate-400">
                     {t('payments.paidOf', {
-                      paid: formatPeso(item.amountPaid),
-                      due: formatPeso(item.amountDue),
+                      paid: moneyText(item.amountPaid, 'borrower'),
+                      due: moneyText(item.amountDue, 'borrower'),
                     })}
                   </Text>
                 )}
               </View>
-              <Text
+              <Money
+                value={item.amountDue}
+                kind="borrower"
                 className={
                   skipped
                     ? 'text-base font-bold text-slate-400 line-through dark:text-slate-500'
                     : 'text-base font-bold text-slate-900 dark:text-white'
-                }>
-                {formatPeso(item.amountDue)}
-              </Text>
+                }
+              />
               <View className="items-end gap-1">
                 <InstallmentStatusChip status={item.status} paymentType={loan.paymentType} />
                 {item.status === 'paid' && item.dueDate > today && <AdvanceMarker />}
@@ -649,7 +652,7 @@ export default function LoanDetailScreen() {
       />
       <VoidPaymentModal
         visible={voiding !== null}
-        amountText={voiding ? formatPeso(voiding.amount) : ''}
+        amountText={voiding ? moneyText(voiding.amount, 'borrower') : ''}
         dateText={voiding ? formatDisplayDate(voiding.paidOn) : ''}
         onCancel={() => setVoiding(null)}
         warning={voiding?.type === 'settlement' ? t('settlement.voidSettlementWarning') : undefined}

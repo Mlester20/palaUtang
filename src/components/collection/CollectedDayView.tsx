@@ -3,12 +3,12 @@ import type { ReactElement } from 'react';
 import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 
 import type { DatedPayment } from '@/db/collection';
+import { Money } from '@/components/Money';
 import { useTabBarInset } from '@/components/navigation/FloatingTabBar';
 import { t } from '@/i18n';
 import { isCashPayment } from '@/lib/cash';
 import { formatTime } from '@/lib/date';
 import { formatDisplayDate } from '@/lib/loan';
-import { formatPeso } from '@/lib/money';
 import { useThemeColors } from '@/lib/theme';
 
 type CollectedDayViewProps = {
@@ -93,12 +93,13 @@ export function CollectedDayView({
             <Text className="text-sm font-semibold text-teal-50">
               {t('collection.totalForDay')}
             </Text>
-            <Text
+            <Money
+              value={total}
+              kind="total"
               className="text-3xl font-extrabold text-white"
               numberOfLines={1}
-              adjustsFontSizeToFit>
-              {formatPeso(total)}
-            </Text>
+              adjustsFontSizeToFit
+            />
           </View>
         </View>
       }
@@ -137,14 +138,15 @@ export function CollectedDayView({
               )}
             </Pressable>
             <View className="items-end gap-2">
-              <Text
+              <Money
+                value={item.amount}
+                kind="borrower"
                 className={
                   voided
                     ? 'text-xl font-extrabold text-slate-400 line-through dark:text-slate-500'
                     : 'text-xl font-extrabold text-slate-900 dark:text-white'
-                }>
-                {formatPeso(item.amount)}
-              </Text>
+                }
+              />
               {!voided && (
                 <View className="flex-row gap-2">
                   <Pressable

@@ -1,8 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, Text, View } from 'react-native';
 
+import { useMoneyText } from '@/components/Money';
 import { t } from '@/i18n';
-import { formatPeso } from '@/lib/money';
 import { useThemeColors } from '@/lib/theme';
 import type { AttentionItem } from '@/types/dashboard';
 
@@ -28,6 +28,7 @@ export function FlaggedBorrowerRow({
   onCall,
 }: FlaggedBorrowerRowProps) {
   const colors = useThemeColors();
+  const moneyText = useMoneyText();
 
   return (
     <View className="flex-row items-center gap-3 py-3">
@@ -52,7 +53,7 @@ export function FlaggedBorrowerRow({
             )}
           </View>
           <Text className="text-base font-bold text-slate-800 dark:text-slate-100">
-            {t('flags.overdueAmount', { amount: formatPeso(totalOverdueCentavos) })}
+            {t('flags.overdueAmount', { amount: moneyText(totalOverdueCentavos, 'borrower') })}
           </Text>
           <Text className="text-sm text-slate-500 dark:text-slate-400">{lastPaidText}</Text>
         </View>

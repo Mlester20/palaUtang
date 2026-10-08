@@ -6,6 +6,7 @@ import { Alert, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 
 import { lastBackupText } from '@/components/backup/backup-text';
 import { FormField } from '@/components/FormField';
+import { useMoneyText } from '@/components/Money';
 import { useTabBarInset } from '@/components/navigation/FloatingTabBar';
 import { ReceiptSheet } from '@/components/receipts/ReceiptSheet';
 import { SegmentedControl } from '@/components/SegmentedControl';
@@ -28,7 +29,6 @@ import {
 import { hasData, isBackupStale } from '@/lib/backup';
 import { showError } from '@/lib/errors';
 import { formatDisplayDate } from '@/lib/loan';
-import { formatPeso } from '@/lib/money';
 import { FLAG_THRESHOLD_LIMITS, validateThresholds, type FlagThresholds } from '@/lib/flags';
 import { sampleReceiptData } from '@/lib/receipt';
 import { useThemeColors } from '@/lib/theme';
@@ -61,6 +61,14 @@ import {
 } from '@/store/appearance';
 import { clearFlagSettings, setFlagThresholds, useFlagThresholds } from '@/store/flag-settings';
 import { clearLoanViewPref } from '@/store/loan-view-prefs';
+import {
+  clearPrivacySettings,
+  setHideBorrowerAmounts,
+  setPrivacyEnabled,
+  setPrivacyStart,
+  usePrivacySettings,
+  type PrivacyStart,
+} from '@/store/privacy';
 
 const GRACE_LABELS: Record<(typeof LOCK_GRACE_OPTIONS)[number], TranslationKey> = {
   0: 'settings.lockAfterImmediately',
@@ -135,6 +143,8 @@ function confirmReset(db: SQLiteDatabase) {
           clearLoanViewPref();
           // Appearance (Light/Dark/System) back to the default, Light (not part of any backup).
           clearAppearanceSetting();
+          // Privacy mode settings (not part of any backup).
+          clearPrivacySettings();
           // No router.replace needed: the root layout guards close (tabs) and send the user
           // back to onboarding as soon as the profile is cleared, removing tabs from history.
           resetAppState();
@@ -150,6 +160,8 @@ export default function SettingsScreen() {
   const tabBarInset = useTabBarInset();
   const { profile } = useAppState();
   const lock = useAppLockSettings();
+  const privacy = usePrivacySettings();
+  const moneyText = useMoneyText();
   const [hasScreenLock, setHasScreenLock] = useState<boolean | null>(null);
   const [lockBusy, setLockBusy] = useState(false);
   const [cashSetup, setCashSetup] = useState<CashSetup | null>(null);
@@ -270,6 +282,60 @@ export default function SettingsScreen() {
         )}
       </Section>
 
+      <Section title={t('privacy.settingsSection')}>
+        <Text className="text-sm text-slate-600 dark:text-slate-400">
+          {t('privacy.settingsExplain')}
+        </Text>
+
+        <View className="min-h-12 flex-row items-center justify-between gap-4">
+          <View className="flex-1 gap-1">
+            <Text className="text-base text-slate-900 dark:text-white">
+              {t('privacy.enableLabel')}
+            </Text>
+            <Text className="text-sm text-slate-600 dark:text-slate-400">
+              {t('privacy.enableHint')}
+            </Text>
+          </View>
+          <Switch
+            value={privacy.enabled}
+            onValueChange={setPrivacyEnabled}
+            trackColor={{ true: colors.primary, false: colors.switchTrackOff }}
+            thumbColor="#ffffff"
+          />
+        </View>
+
+        {privacy.enabled && (
+          <>
+            <View className="min-h-12 flex-row items-center justify-between gap-4">
+              <View className="flex-1 gap-1">
+                <Text className="text-base text-slate-900 dark:text-white">
+                  {t('privacy.hideBorrowerLabel')}
+                </Text>
+                <Text className="text-sm text-slate-600 dark:text-slate-400">
+                  {t('privacy.hideBorrowerHint')}
+                </Text>
+              </View>
+              <Switch
+                value={privacy.hideBorrowerAmounts}
+                onValueChange={setHideBorrowerAmounts}
+                trackColor={{ true: colors.primary, false: colors.switchTrackOff }}
+                thumbColor="#ffffff"
+              />
+            </View>
+
+            <SegmentedControl
+              label={t('privacy.startLabel')}
+              value={privacy.start}
+              onChange={(v) => setPrivacyStart(v as PrivacyStart)}
+              options={[
+                { value: 'remember', label: t('privacy.startRemember') },
+                { value: 'always', label: t('privacy.startAlways') },
+              ]}
+            />
+          </>
+        )}
+      </Section>
+
       <Section title={t('settlement.settingsSection')}>
         <Text className="text-sm text-slate-600 dark:text-slate-400">
           {t('settlement.settingsHint')}
@@ -317,7 +383,7 @@ export default function SettingsScreen() {
         {cashSetup === null ? null : cashSetup.isSetUp ? (
           <>
             <Row label={t('cash.settingsStatus')} value={t('cash.settingsOn')} />
-            <Row label={t('cash.openingLabel')} value={formatPeso(cashSetup.openingAmount)} />
+            <Row label={t('cash.openingLabel')} value={moneyText(cashSetup.openingAmount, 'total')} />
             <Row
               label={t('cash.startDateLabel')}
               value={formatDisplayDate(cashSetup.ledgerStartDate!)}

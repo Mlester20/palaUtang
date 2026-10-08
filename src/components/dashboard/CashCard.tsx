@@ -1,8 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, Text, View } from 'react-native';
 
+import { Money, useMoneyText } from '@/components/Money';
 import { t } from '@/i18n';
-import { formatPeso } from '@/lib/money';
 import { useThemeColors } from '@/lib/theme';
 import type { Centavos } from '@/types/dashboard';
 
@@ -21,11 +21,12 @@ export function CashCard({
   onPress,
 }: CashCardProps) {
   const colors = useThemeColors();
+  const moneyText = useMoneyText();
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${t('dashboard.cashOnHand')}: ${formatPeso(cashOnHandCentavos)}`}
+      accessibilityLabel={`${t('dashboard.cashOnHand')}: ${moneyText(cashOnHandCentavos, 'total')}`}
       className="gap-3 rounded-2xl bg-white p-4 active:opacity-70 dark:bg-slate-900">
       <View className="flex-row items-center gap-3">
         <View className="h-10 w-10 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-950">
@@ -35,16 +36,17 @@ export function CashCard({
           <Text className="text-sm font-semibold text-slate-600 dark:text-slate-300">
             {t('dashboard.cashOnHand')}
           </Text>
-          <Text
+          <Money
+            value={cashOnHandCentavos}
+            kind="total"
             className={
               cashOnHandCentavos < 0
                 ? 'text-2xl font-extrabold text-red-600 dark:text-red-400'
                 : 'text-2xl font-extrabold text-slate-900 dark:text-white'
             }
             numberOfLines={1}
-            adjustsFontSizeToFit>
-            {formatPeso(cashOnHandCentavos)}
-          </Text>
+            adjustsFontSizeToFit
+          />
         </View>
         <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
       </View>
@@ -53,17 +55,21 @@ export function CashCard({
           <Text className="text-xs text-slate-600 dark:text-slate-300">
             {t('dashboard.withdrawnToday')}
           </Text>
-          <Text className="text-base font-bold text-slate-900 dark:text-white">
-            {formatPeso(withdrawnTodayCentavos)}
-          </Text>
+          <Money
+            value={withdrawnTodayCentavos}
+            kind="total"
+            className="text-base font-bold text-slate-900 dark:text-white"
+          />
         </View>
         <View className="flex-1 rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-800">
           <Text className="text-xs text-slate-600 dark:text-slate-300">
             {t('dashboard.expensesToday')}
           </Text>
-          <Text className="text-base font-bold text-slate-900 dark:text-white">
-            {formatPeso(expensesTodayCentavos)}
-          </Text>
+          <Money
+            value={expensesTodayCentavos}
+            kind="total"
+            className="text-base font-bold text-slate-900 dark:text-white"
+          />
         </View>
       </View>
     </Pressable>

@@ -1,10 +1,10 @@
 import { Text, View } from 'react-native';
 
+import { Money } from '@/components/Money';
 import { t } from '@/i18n';
-import { formatPeso } from '@/lib/money';
 import type { WeeklyEarnings } from '@/types/dashboard';
 
-import { WeeklyBarChart } from './WeeklyBarChart';
+import { WeeklyLineChart } from './WeeklyLineChart';
 
 type WeeklyEarningsCardProps = WeeklyEarnings & {
   highlightIndex?: number;
@@ -23,23 +23,26 @@ export function WeeklyEarningsCard({
         <Text className="text-sm font-semibold text-slate-600 dark:text-slate-300">
           {t('dashboard.weekTotal')}
         </Text>
-        <Text
+        <Money
+          value={weekTotal}
+          kind="total"
           className="text-3xl font-extrabold text-slate-900 dark:text-white"
           numberOfLines={1}
-          adjustsFontSizeToFit>
-          {formatPeso(weekTotal)}
-        </Text>
+          adjustsFontSizeToFit
+        />
       </View>
 
-      <WeeklyBarChart days={days} highlightIndex={highlightIndex} />
+      <WeeklyLineChart days={days} highlightIndex={highlightIndex} />
 
       <View className="flex-row items-center justify-between rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-800">
         <Text className="flex-1 text-sm text-slate-600 dark:text-slate-300">
           {t('dashboard.monthInterest')}
         </Text>
-        <Text className="text-base font-bold text-teal-700 dark:text-teal-300">
-          {formatPeso(monthInterestCentavos)}
-        </Text>
+        <Money
+          value={monthInterestCentavos}
+          kind="total"
+          className="text-base font-bold text-teal-700 dark:text-teal-300"
+        />
       </View>
     </View>
   );

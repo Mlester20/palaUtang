@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useMemo, useState } from 'react';
 import { Pressable, Text, useColorScheme, View } from 'react-native';
 
+import { useMoneyText } from '@/components/Money';
 import { t, type TranslationKey } from '@/i18n';
 import { parseYmd, type PaymentType } from '@/lib/loan';
 import {
@@ -11,7 +12,6 @@ import {
   type LoanCalendarResult,
   type MonthKey,
 } from '@/lib/loanCalendar';
-import { formatPeso } from '@/lib/money';
 import { useThemeColors } from '@/lib/theme';
 
 import { DAY_STATE_STYLE, LEGEND_STATES, stateLabelKey } from './dayStateStyles';
@@ -68,6 +68,7 @@ type LoanCalendarProps = {
 export function LoanCalendar({ result, paymentType, today, onDayPress }: LoanCalendarProps) {
   const colors = useThemeColors();
   const isDark = useColorScheme() === 'dark';
+  const moneyText = useMoneyText();
   const [month, setMonth] = useState<MonthKey>(result.openingMonth);
   const [highlight, setHighlight] = useState<CalendarDayState | null>(null);
 
@@ -126,8 +127,11 @@ export function LoanCalendar({ result, paymentType, today, onDayPress }: LoanCal
 
       {/* Month summary */}
       <View className="flex-row justify-between rounded-xl bg-white px-4 py-3 dark:bg-slate-900">
-        <SummaryStat label={t('calendar.summaryDue')} value={formatPeso(summary.amountDue)} />
-        <SummaryStat label={t('calendar.summaryReceived')} value={formatPeso(summary.received)} />
+        <SummaryStat label={t('calendar.summaryDue')} value={moneyText(summary.amountDue, 'borrower')} />
+        <SummaryStat
+          label={t('calendar.summaryReceived')}
+          value={moneyText(summary.received, 'borrower')}
+        />
         <SummaryStat
           label={t('calendar.summaryMissed')}
           value={String(summary.missedCount)}

@@ -19,6 +19,7 @@ import { useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AppLockGate } from '@/components/AppLockGate';
+import { PrivacyProvider } from '@/components/PrivacyProvider';
 import { RestoreOverlay } from '@/components/backup/RestoreOverlay';
 import { ReconcileOnForeground } from '@/components/ReconcileOnForeground';
 import { DATABASE_NAME, migrateDbIfNeeded } from '@/db/migrations';
@@ -84,6 +85,7 @@ export default function RootLayout() {
       {/* The lock comes first: while locked, nothing below (not even the database) is rendered. */}
       {/* Nothing is rendered until fonts are ready; the splash overlay covers the wait. */}
       {fontsReady && (
+        <PrivacyProvider>
         <AppLockGate>
           {/* Migrations run in onInit before any screen renders, so screens can always query. */}
           <SQLiteProvider key={dataGeneration} databaseName={DATABASE_NAME} onInit={initDatabase}>
@@ -199,6 +201,7 @@ export default function RootLayout() {
             <RestoreOverlay />
           </SQLiteProvider>
         </AppLockGate>
+        </PrivacyProvider>
       )}
       <AnimatedSplashOverlay ready={fontsReady} />
     </ThemeProvider>

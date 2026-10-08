@@ -1,9 +1,9 @@
 import { memo } from 'react';
 import { Text, View } from 'react-native';
 
+import { Money, useMoneyText } from '@/components/Money';
 import { t } from '@/i18n';
 import { formatShortDate } from '@/lib/loan';
-import { formatPeso } from '@/lib/money';
 
 type DailyReportRowProps = {
   /** 'YYYY-MM-DD' */
@@ -16,6 +16,7 @@ type DailyReportRowProps = {
 
 /** One day: cash collected with a plain-View bar, and the interest part of what came in. */
 function DailyReportRowBase({ date, cashCollected, interestEarned, maxCash }: DailyReportRowProps) {
+  const moneyText = useMoneyText();
   const cashShare = maxCash > 0 ? Math.min(1, Math.max(0, cashCollected / maxCash)) : 0;
   const interestShare =
     maxCash > 0 ? Math.min(1, Math.max(0, interestEarned / maxCash)) : 0;
@@ -27,14 +28,15 @@ function DailyReportRowBase({ date, cashCollected, interestEarned, maxCash }: Da
         <Text className="text-base font-semibold text-slate-900 dark:text-white">
           {formatShortDate(date)}
         </Text>
-        <Text
+        <Money
+          value={cashCollected}
+          kind="total"
           className={
             empty
               ? 'text-base text-slate-400 dark:text-slate-500'
               : 'text-lg font-bold text-slate-900 dark:text-white'
-          }>
-          {formatPeso(cashCollected)}
-        </Text>
+          }
+        />
       </View>
       {!empty && (
         <>
@@ -52,7 +54,7 @@ function DailyReportRowBase({ date, cashCollected, interestEarned, maxCash }: Da
               />
             </View>
             <Text className="text-sm text-slate-600 dark:text-slate-300">
-              {t('reports.dayInterest', { amount: formatPeso(interestEarned) })}
+              {t('reports.dayInterest', { amount: moneyText(interestEarned, 'total') })}
             </Text>
           </View>
         </>

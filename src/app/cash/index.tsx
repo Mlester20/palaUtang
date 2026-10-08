@@ -17,7 +17,9 @@ import { CashSetupCard } from '@/components/cash/CashSetupCard';
 import { cashErrorText, kindLabel } from '@/components/cash/cash-text';
 import { LedgerItemRow } from '@/components/cash/LedgerItemRow';
 import { DateField } from '@/components/DateField';
+import { Money, useMoneyText } from '@/components/Money';
 import { VoidPaymentModal } from '@/components/payments/VoidPaymentModal';
+import { PrivacyToggle } from '@/components/PrivacyToggle';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { getCashLedger, getCashSummary, voidCashEntry, type CashLedger, type CashSummary } from '@/db/cash';
 import { t, type TranslationKey } from '@/i18n';
@@ -25,7 +27,6 @@ import { confirmOwner } from '@/lib/appLock';
 import { computeCashOnHand, partsFromLedger, type CashEntry, type LedgerItem } from '@/lib/cash';
 import { showError } from '@/lib/errors';
 import { formatDisplayDate, formatShortDate, todayYmd } from '@/lib/loan';
-import { formatPeso } from '@/lib/money';
 import { monthRange, validateCustomRange, weekRange, type DateRange } from '@/lib/ranges';
 import { useThemeColors } from '@/lib/theme';
 
@@ -49,6 +50,7 @@ export default function CashScreen() {
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
   const colors = useThemeColors();
+  const moneyText = useMoneyText();
   const [preset, setPreset] = useState<Preset>('today');
   const [today, setToday] = useState(todayYmd);
   const [custom, setCustom] = useState<DateRange>(() => ({
@@ -160,10 +162,19 @@ export default function CashScreen() {
     <View className="gap-4 pb-2">
       {/* Cash on hand now */}
       <View className="gap-3 rounded-3xl bg-teal-700 p-5 dark:bg-teal-800">
-        <Text className="text-base font-semibold text-teal-50">{t('cash.cashOnHandNow')}</Text>
-        <Text className="text-4xl font-extrabold text-white" numberOfLines={1} adjustsFontSizeToFit>
-          {formatPeso(summary.cashOnHand)}
-        </Text>
+        <View className="flex-row items-center justify-between">
+          <Text className="text-base font-semibold text-teal-50">{t('cash.cashOnHandNow')}</Text>
+          <View className="-mr-2 -mt-2">
+            <PrivacyToggle tone="onDark" />
+          </View>
+        </View>
+        <Money
+          value={summary.cashOnHand}
+          kind="total"
+          className="text-4xl font-extrabold text-white"
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        />
         <Text className="text-sm text-teal-50">
           {t('cash.sinceStart', { date: formatDisplayDate(summary.setup.ledgerStartDate!) })}
         </Text>
@@ -266,21 +277,22 @@ export default function CashScreen() {
               </Text>
               <Text className="text-xs text-slate-600 dark:text-slate-400">
                 {t('cash.dayLine', {
-                  collected: formatPeso(section.day.collected),
-                  out: formatPeso(section.day.dayOut),
+                  collected: moneyText(section.day.collected, 'total'),
+                  out: moneyText(section.day.dayOut, 'total'),
                 })}
               </Text>
             </View>
             <View className="items-end">
               <Text className="text-xs text-slate-600 dark:text-slate-400">{t('cash.balance')}</Text>
-              <Text
+              <Money
+                value={section.day.balance}
+                kind="total"
                 className={
                   section.day.balance < 0
                     ? 'text-base font-bold text-red-600 dark:text-red-400'
                     : 'text-base font-bold text-slate-900 dark:text-white'
-                }>
-                {formatPeso(section.day.balance)}
-              </Text>
+                }
+              />
             </View>
           </View>
         )}
@@ -293,14 +305,14 @@ export default function CashScreen() {
 
       <VoidPaymentModal
         visible={voiding !== null}
-        amountText={voiding ? formatPeso(voiding.amount) : ''}
+        amountText={voiding ? moneyText(voiding.amount, 'total') : ''}
         dateText={voiding ? formatDisplayDate(voiding.entryDate) : ''}
         title={t('cash.voidTitle')}
         message={
           voiding
             ? t('cash.voidMessage', {
                 kind: kindLabel(voiding.kind),
-                amount: formatPeso(voiding.amount),
+                amount: moneyText(voiding.amount, 'total'),
                 date: formatDisplayDate(voiding.entryDate),
               })
             : ''
@@ -346,13 +358,14 @@ function PartLine({
   sign?: '+' | '−';
   bold?: boolean;
 }) {
+  const moneyText = useMoneyText();
   return (
     <View className="flex-row items-center justify-between gap-3">
       <Text className={bold ? 'text-base font-bold text-slate-900 dark:text-white' : 'text-base text-slate-600 dark:text-slate-300'}>
         {label}
       </Text>
       <Text className={bold ? 'text-lg font-extrabold text-slate-900 dark:text-white' : 'text-base font-semibold text-slate-900 dark:text-white'}>
-        {sign ? `${sign}${formatPeso(Math.abs(value))}` : formatPeso(value)}
+        {sign ? `${sign}${moneyText(Math.abs(value), 'total')}` : moneyText(value, 'total')}
       </Text>
     </View>
   );

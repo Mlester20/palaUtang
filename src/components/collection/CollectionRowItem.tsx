@@ -3,10 +3,10 @@ import { memo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { InitialsAvatar, StatusChip } from '@/components/dashboard';
+import { useMoneyText } from '@/components/Money';
 import { t } from '@/i18n';
 import type { ClassifiedRow } from '@/lib/collection';
 import type { FlagThresholds } from '@/lib/flags';
-import { formatPeso } from '@/lib/money';
 import { useThemeColors } from '@/lib/theme';
 
 import { collectionChip } from './collection-chip';
@@ -34,27 +34,27 @@ function lateText(row: ClassifiedRow) {
   );
 }
 
-function breakdown(row: ClassifiedRow): string {
+function breakdown(row: ClassifiedRow, moneyText: ReturnType<typeof useMoneyText>): string {
   if (row.status === 'paid_today')
-    return t('collection.paidTodayLine', { amount: formatPeso(row.collectedToday) });
+    return t('collection.paidTodayLine', { amount: moneyText(row.collectedToday, 'borrower') });
   if (row.status === 'paid_in_advance') return t('collection.paidAdvanceLine');
   if (row.status === 'partial')
     return t('collection.breakdownPartial', {
-      left: formatPeso(row.dueTodayOutstanding),
-      due: formatPeso(row.dueTodayAmount),
+      left: moneyText(row.dueTodayOutstanding, 'borrower'),
+      due: moneyText(row.dueTodayAmount, 'borrower'),
     });
   if (row.dueTodayOutstanding > 0 && row.overdueOutstanding > 0)
     return t('collection.breakdownTodayOverdue', {
-      today: formatPeso(row.dueTodayOutstanding),
-      overdue: formatPeso(row.overdueOutstanding),
+      today: moneyText(row.dueTodayOutstanding, 'borrower'),
+      overdue: moneyText(row.overdueOutstanding, 'borrower'),
       days: lateText(row),
     });
   if (row.overdueOutstanding > 0)
     return t('collection.breakdownOverdue', {
-      overdue: formatPeso(row.overdueOutstanding),
+      overdue: moneyText(row.overdueOutstanding, 'borrower'),
       days: lateText(row),
     });
-  return t('collection.breakdownToday', { today: formatPeso(row.dueTodayOutstanding) });
+  return t('collection.breakdownToday', { today: moneyText(row.dueTodayOutstanding, 'borrower') });
 }
 
 function CollectionRowItemBase({
@@ -67,6 +67,7 @@ function CollectionRowItemBase({
   thresholds,
 }: CollectionRowItemProps) {
   const colors = useThemeColors();
+  const moneyText = useMoneyText();
   const c = collectionChip(row, today, thresholds);
   const toCollect = row.toCollect > 0;
 
@@ -90,7 +91,7 @@ function CollectionRowItemBase({
         <StatusChip label={c.label} tone={c.tone} size="sm" />
       </Pressable>
 
-      <Text className="text-base text-slate-700 dark:text-slate-200">{breakdown(row)}</Text>
+      <Text className="text-base text-slate-700 dark:text-slate-200">{breakdown(row, moneyText)}</Text>
 
       {toCollect && (
         <View className="flex-row gap-2">
@@ -109,7 +110,7 @@ function CollectionRowItemBase({
               className="text-lg font-extrabold text-white"
               numberOfLines={1}
               adjustsFontSizeToFit>
-              {t('collection.collectButton', { amount: formatPeso(row.toCollect) })}
+              {t('collection.collectButton', { amount: moneyText(row.toCollect, 'borrower') })}
             </Text>
           </Pressable>
           <Pressable

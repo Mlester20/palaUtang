@@ -1,8 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, Text, View } from 'react-native';
 
+import { Money } from '@/components/Money';
 import { t } from '@/i18n';
-import { formatPeso } from '@/lib/money';
 import { useThemeColors } from '@/lib/theme';
 
 type CollectionCashStripProps = {
@@ -48,24 +48,29 @@ export function CollectionCashStrip({
           <Text className="text-xs font-semibold text-slate-600 dark:text-slate-300">
             {t('cash.outToday')}
           </Text>
-          <Text className="text-lg font-bold text-slate-900 dark:text-white" numberOfLines={1} adjustsFontSizeToFit>
-            {formatPeso(outToday)}
-          </Text>
+          <Money
+            value={outToday}
+            kind="total"
+            className="text-lg font-bold text-slate-900 dark:text-white"
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          />
         </View>
         <View className="flex-1">
           <Text className="text-xs font-semibold text-slate-600 dark:text-slate-300">
             {t('cash.cashOnHand')}
           </Text>
-          <Text
+          <Money
+            value={cashOnHand}
+            kind="total"
             className={
               cashOnHand < 0
                 ? 'text-lg font-bold text-red-600 dark:text-red-400'
                 : 'text-lg font-bold text-slate-900 dark:text-white'
             }
             numberOfLines={1}
-            adjustsFontSizeToFit>
-            {formatPeso(cashOnHand)}
-          </Text>
+            adjustsFontSizeToFit
+          />
         </View>
       </Pressable>
       <Pressable

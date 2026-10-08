@@ -1,6 +1,6 @@
 import { Pressable, Text, View } from 'react-native';
 
-import { formatPeso } from '@/lib/money';
+import { Money } from '@/components/Money';
 import type { DueTodayItem } from '@/types/dashboard';
 
 import { InitialsAvatar } from './InitialsAvatar';
@@ -28,9 +28,11 @@ export function DueTodayRow({
         <Text className="text-base font-semibold text-slate-900 dark:text-white" numberOfLines={1}>
           {borrowerName}
         </Text>
-        <Text className="text-lg font-bold text-slate-700 dark:text-slate-200">
-          {formatPeso(amountDueCentavos)}
-        </Text>
+        <Money
+          value={amountDueCentavos}
+          kind="borrower"
+          className="text-lg font-bold text-slate-700 dark:text-slate-200"
+        />
       </View>
       <StatusChip label={chipLabel} tone={chipTone} size="sm" />
     </Pressable>

@@ -1,7 +1,7 @@
 import { Text, View } from 'react-native';
 
+import { Money, useMoneyText } from '@/components/Money';
 import { t } from '@/i18n';
-import { formatPeso } from '@/lib/money';
 import type { HeroCollection } from '@/types/dashboard';
 
 type HeroCollectionCardProps = HeroCollection & {
@@ -18,33 +18,36 @@ export function HeroCollectionCard({
   paidCount,
   totalCount,
 }: HeroCollectionCardProps) {
+  const moneyText = useMoneyText();
   return (
     <View className="gap-4 rounded-3xl bg-teal-700 p-5 dark:bg-teal-800">
       <View className="flex-row items-center justify-between gap-3">
         <Text className="text-base font-semibold text-teal-50">{title}</Text>
         <Text className="text-sm text-teal-50" numberOfLines={1}>
-          {t('dashboard.expectedToday', { amount: formatPeso(expectedCentavos) })}
+          {t('dashboard.expectedToday', { amount: moneyText(expectedCentavos, 'total') })}
         </Text>
       </View>
 
       <View className="flex-row gap-4">
         <View className="flex-1 gap-1">
           <Text className="text-sm font-semibold text-teal-50">{t('dashboard.collected')}</Text>
-          <Text
+          <Money
+            value={collectedCentavos}
+            kind="total"
             className="text-4xl font-extrabold text-white"
             numberOfLines={1}
-            adjustsFontSizeToFit>
-            {formatPeso(collectedCentavos)}
-          </Text>
+            adjustsFontSizeToFit
+          />
         </View>
         <View className="items-end gap-1">
           <Text className="text-sm font-semibold text-teal-50">{t('dashboard.remaining')}</Text>
-          <Text
+          <Money
+            value={remainingCentavos}
+            kind="total"
             className="text-2xl font-extrabold text-white"
             numberOfLines={1}
-            adjustsFontSizeToFit>
-            {formatPeso(remainingCentavos)}
-          </Text>
+            adjustsFontSizeToFit
+          />
         </View>
       </View>
 

@@ -2,10 +2,10 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, Text, useColorScheme, View } from 'react-native';
 
 import { BottomSheet } from '@/components/BottomSheet';
+import { Money, useMoneyText } from '@/components/Money';
 import { t } from '@/i18n';
 import { collectionDaysBetween, formatDisplayDate } from '@/lib/loan';
 import type { CalendarDay } from '@/lib/loanCalendar';
-import { formatPeso } from '@/lib/money';
 import { useThemeColors } from '@/lib/theme';
 import type { PaymentType } from '@/lib/loan';
 import type { LoanStatus } from '@/types/loan';
@@ -26,7 +26,12 @@ type DayDetailSheetProps = {
   onReceipt: (paymentId: number) => void;
 };
 
-function explainDay(day: CalendarDay, paymentType: PaymentType, skipSundays: boolean): string {
+function explainDay(
+  day: CalendarDay,
+  paymentType: PaymentType,
+  skipSundays: boolean,
+  moneyText: ReturnType<typeof useMoneyText>,
+): string {
   const inst = day.installment;
   if (!inst) {
     if (day.isSundayNoCollection) return t('calendar.explainNoCollection');
@@ -47,7 +52,7 @@ function explainDay(day: CalendarDay, paymentType: PaymentType, skipSundays: boo
     case 'advance':
       return t('calendar.explainAdvance', { date: formatDisplayDate(inst.completionDate ?? day.date) });
     case 'partial': {
-      const shortfall = formatPeso(inst.amountDue - inst.amountPaid - inst.waivedAmount);
+      const shortfall = moneyText(inst.amountDue - inst.amountPaid - inst.waivedAmount, 'borrower');
       return overdue
         ? t('calendar.explainPartialOverdue', { amount: shortfall })
         : t('calendar.explainPartial', { amount: shortfall });
@@ -56,8 +61,12 @@ function explainDay(day: CalendarDay, paymentType: PaymentType, skipSundays: boo
       return day.isToday ? t('calendar.explainPendingToday') : t('calendar.explainPending');
     case 'missed':
       return paymentType === 'lump_sum'
-        ? t('calendar.explainOverdueLumpSum', { amount: formatPeso(inst.amountDue - inst.amountPaid) })
-        : t('calendar.explainMissed', { amount: formatPeso(inst.amountDue - inst.amountPaid) });
+        ? t('calendar.explainOverdueLumpSum', {
+            amount: moneyText(inst.amountDue - inst.amountPaid, 'borrower'),
+          })
+        : t('calendar.explainMissed', {
+            amount: moneyText(inst.amountDue - inst.amountPaid, 'borrower'),
+          });
     case 'makeup_pending':
       return t('calendar.explainMakeupPending');
     case 'makeup_not_needed':
@@ -83,6 +92,7 @@ export function DayDetailSheet({
 }: DayDetailSheetProps) {
   const isDark = useColorScheme() === 'dark';
   const colors = useThemeColors();
+  const moneyText = useMoneyText();
 
   return (
     <BottomSheet visible={day !== null} onClose={onClose}>
@@ -94,7 +104,7 @@ export function DayDetailSheet({
             </Text>
             <StateChip state={day.state} paymentType={paymentType} isDark={isDark} />
             <Text className="text-base text-slate-600 dark:text-slate-300">
-              {explainDay(day, paymentType, skipSundays)}
+              {explainDay(day, paymentType, skipSundays, moneyText)}
             </Text>
           </View>
 
@@ -114,13 +124,20 @@ export function DayDetailSheet({
                       total: totalCount,
                     })}
               </Text>
-              <Row label={t('calendar.amountDueLabel')} value={formatPeso(day.installment.amountDue)} />
-              <Row label={t('calendar.amountPaidLabel')} value={formatPeso(day.installment.amountPaid)} />
+              <Row
+                label={t('calendar.amountDueLabel')}
+                value={moneyText(day.installment.amountDue, 'borrower')}
+              />
+              <Row
+                label={t('calendar.amountPaidLabel')}
+                value={moneyText(day.installment.amountPaid, 'borrower')}
+              />
               {day.installment.amountPaid + day.installment.waivedAmount < day.installment.amountDue && (
                 <Row
                   label={t('calendar.shortfallLabel')}
-                  value={formatPeso(
+                  value={moneyText(
                     day.installment.amountDue - day.installment.amountPaid - day.installment.waivedAmount,
+                    'borrower',
                   )}
                 />
               )}
@@ -160,7 +177,7 @@ export function DayDetailSheet({
                             ? 'text-base font-bold text-slate-400 line-through dark:text-slate-500'
                             : 'text-base font-bold text-slate-900 dark:text-white'
                         }>
-                        {formatPeso(p.amount)} · {typeLabel}
+                        <Money value={p.amount} kind="borrower" /> · {typeLabel}
                       </Text>
                       {p.note && (
                         <Text className="text-sm text-slate-500 dark:text-slate-400">{p.note}</Text>

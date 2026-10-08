@@ -6,7 +6,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { lastBackupText } from '@/components/backup/backup-text';
 import { CashSetupCard } from '@/components/cash/CashSetupCard';
 import { collectionChip } from '@/components/collection/collection-chip';
+import { useMoneyText } from '@/components/Money';
 import { useTabBarInset } from '@/components/navigation/FloatingTabBar';
+import { PrivacyToggle } from '@/components/PrivacyToggle';
 import {
   BackupReminderCard,
   CashCard,
@@ -30,7 +32,6 @@ import { groupCollection, progressPercent } from '@/lib/collection';
 import { formatLongDate, mondayFirstDayIndex } from '@/lib/date';
 import type { FlagThresholds } from '@/lib/flags';
 import { parseYmd, todayYmd } from '@/lib/loan';
-import { formatPeso } from '@/lib/money';
 import { useThemeColors } from '@/lib/theme';
 import { useAppState } from '@/store/app-state';
 import { dismissReminderUntil, useBackupStatus } from '@/store/backup-state';
@@ -104,6 +105,7 @@ export default function HomeScreen() {
               {t('dashboard.greeting', { name: profile.businessName })}
             </Text>
           </View>
+          <PrivacyToggle />
           <InitialsAvatar name={profile.businessName} size="lg" />
         </View>
 
@@ -135,6 +137,7 @@ function Dashboard({
   highlightIndex: number;
 }) {
   const colors = useThemeColors();
+  const moneyText = useMoneyText();
   const { summary, stats, flagged } = data;
   const dueToday = dueTodayItems(data, thresholds);
   const backup = useBackupStatus();
@@ -195,9 +198,9 @@ function Dashboard({
           <StatCard
             icon="wallet"
             label={t('dashboard.statOutstanding')}
-            value={formatPeso(stats.outstanding)}
+            value={moneyText(stats.outstanding, 'total')}
             secondary={t('dashboard.statPrincipalOut', {
-              amount: formatPeso(stats.principalOutstanding),
+              amount: moneyText(stats.principalOutstanding, 'total'),
             })}
           />
         </View>

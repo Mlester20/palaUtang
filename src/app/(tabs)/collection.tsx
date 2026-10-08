@@ -23,6 +23,7 @@ import { CollectSheet } from '@/components/collection/CollectSheet';
 import { RowActionsSheet } from '@/components/collection/RowActionsSheet';
 import { UndoSnackbar } from '@/components/collection/UndoSnackbar';
 import { EmptyState } from '@/components/empty-state';
+import { useMoneyText } from '@/components/Money';
 import { useTabBarInset } from '@/components/navigation/FloatingTabBar';
 import { VoidPaymentModal } from '@/components/payments/VoidPaymentModal';
 import { ReceiptSheet } from '@/components/receipts/ReceiptSheet';
@@ -89,6 +90,7 @@ type Snack = { key: number; text: string; canUndo: boolean; canReceipt?: boolean
 export default function CollectionScreen() {
   const db = useSQLiteContext();
   const colors = useThemeColors();
+  const moneyText = useMoneyText();
   const thresholds = useFlagThresholds();
   const tabBarInset = useTabBarInset();
 
@@ -329,7 +331,7 @@ export default function CollectionScreen() {
                 title: s.area ?? t('collection.noArea'),
                 subtitle: t('collection.areaSubtotal', {
                   count: s.toCollectCount,
-                  amount: formatPeso(s.toCollectAmount),
+                  amount: moneyText(s.toCollectAmount, 'total'),
                 }),
                 area: s.area,
                 data,
@@ -342,7 +344,7 @@ export default function CollectionScreen() {
               title: s.area ?? t('collection.noArea'),
               subtitle: t('collection.areaSubtotal', {
                 count: s.toCollectCount,
-                amount: formatPeso(s.toCollectAmount),
+                amount: moneyText(s.toCollectAmount, 'total'),
               }),
               area: s.area,
               data: [
@@ -555,8 +557,8 @@ export default function CollectionScreen() {
                     <View className="flex-row items-center justify-between rounded-xl bg-white px-4 py-3 dark:bg-slate-900">
                       <Text className="text-sm text-slate-600 dark:text-slate-300">
                         {t('collection.areaSubtotalLine', {
-                          collected: formatPeso(areaSubtotal.collectedToday),
-                          remaining: formatPeso(areaSubtotal.remaining),
+                          collected: moneyText(areaSubtotal.collectedToday, 'total'),
+                          remaining: moneyText(areaSubtotal.remaining, 'total'),
                         })}
                       </Text>
                     </View>
@@ -586,7 +588,7 @@ export default function CollectionScreen() {
                       </Text>
                       <Text className="text-base text-green-900 dark:text-green-100">
                         {t('collection.allDoneMessage', {
-                          amount: formatPeso(summary.collectedToday),
+                          amount: moneyText(summary.collectedToday, 'total'),
                         })}
                       </Text>
                     </View>
@@ -719,7 +721,7 @@ export default function CollectionScreen() {
       />
       <VoidPaymentModal
         visible={voiding !== null}
-        amountText={voiding ? formatPeso(voiding.amount) : ''}
+        amountText={voiding ? moneyText(voiding.amount, 'borrower') : ''}
         dateText={formatDisplayDate(shownDate)}
         warning={voiding?.type === 'settlement' ? t('settlement.voidSettlementWarning') : undefined}
         onCancel={() => setVoiding(null)}

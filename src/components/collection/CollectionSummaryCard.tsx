@@ -1,8 +1,9 @@
 import { Text, View } from 'react-native';
 
+import { Money } from '@/components/Money';
+import { PrivacyToggle } from '@/components/PrivacyToggle';
 import { t } from '@/i18n';
 import { progressPercent, type CollectionSummary } from '@/lib/collection';
-import { formatPeso } from '@/lib/money';
 
 /** Collected today, remaining, progress and "X of Y paid" — big numbers for outdoor use. */
 export function CollectionSummaryCard({ summary }: { summary: CollectionSummary }) {
@@ -15,21 +16,30 @@ export function CollectionSummaryCard({ summary }: { summary: CollectionSummary 
           <Text className="text-sm font-semibold text-teal-50">
             {t('collection.collectedToday')}
           </Text>
-          <Text
+          <Money
+            value={summary.collectedToday}
+            kind="total"
             className="text-3xl font-extrabold text-white"
             numberOfLines={1}
-            adjustsFontSizeToFit>
-            {formatPeso(summary.collectedToday)}
-          </Text>
+            adjustsFontSizeToFit
+          />
         </View>
         <View className="flex-1 items-end gap-1">
-          <Text className="text-sm font-semibold text-teal-50">{t('collection.remaining')}</Text>
-          <Text
+          <View className="w-full flex-row items-center justify-end">
+            <Text className="text-sm font-semibold text-teal-50">
+              {t('collection.remaining')}
+            </Text>
+            <View className="-mr-2">
+              <PrivacyToggle tone="onDark" />
+            </View>
+          </View>
+          <Money
+            value={summary.remaining}
+            kind="total"
             className="text-3xl font-extrabold text-white"
             numberOfLines={1}
-            adjustsFontSizeToFit>
-            {formatPeso(summary.remaining)}
-          </Text>
+            adjustsFontSizeToFit
+          />
         </View>
       </View>
 

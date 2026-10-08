@@ -1,9 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Text, useColorScheme, View } from 'react-native';
 
+import { useMoneyText } from '@/components/Money';
 import { t } from '@/i18n';
 import type { Severity } from '@/lib/flags';
-import { formatPeso } from '@/lib/money';
 
 import { daysBehindText, severityLabel } from './flag-text';
 
@@ -38,6 +38,7 @@ type SeverityBannerProps = {
 /** Borrower detail: how far behind they are, in the severity colour. */
 export function SeverityBanner({ severity, daysBehind, totalOverdue, loanCount }: SeverityBannerProps) {
   const isDark = useColorScheme() === 'dark';
+  const moneyText = useMoneyText();
   const s = STYLES[severity];
   return (
     <View className={s.box} accessibilityRole="alert">
@@ -55,8 +56,11 @@ export function SeverityBanner({ severity, daysBehind, totalOverdue, loanCount }
         </Text>
         <Text className={`text-base ${s.text}`}>
           {loanCount === 1
-            ? t('flags.bannerOverdueOne', { amount: formatPeso(totalOverdue) })
-            : t('flags.bannerOverdueMany', { amount: formatPeso(totalOverdue), count: loanCount })}
+            ? t('flags.bannerOverdueOne', { amount: moneyText(totalOverdue, 'borrower') })
+            : t('flags.bannerOverdueMany', {
+                amount: moneyText(totalOverdue, 'borrower'),
+                count: loanCount,
+              })}
         </Text>
       </View>
     </View>

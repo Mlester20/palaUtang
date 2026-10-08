@@ -11,3 +11,4 @@ export { StatCard } from './StatCard';
 export { StatusChip } from './StatusChip';
 export { WeeklyBarChart } from './WeeklyBarChart';
 export { WeeklyEarningsCard } from './WeeklyEarningsCard';
+export { WeeklyLineChart } from './WeeklyLineChart';

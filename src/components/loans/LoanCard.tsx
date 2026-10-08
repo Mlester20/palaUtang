@@ -1,8 +1,8 @@
 import { Pressable, Text, View } from 'react-native';
 
+import { Money } from '@/components/Money';
 import { formatFullDate } from '@/lib/date';
 import { parseYmd } from '@/lib/loan';
-import { formatPeso } from '@/lib/money';
 import type { LoanSummary } from '@/types/loan';
 
 import { ProgressBar } from './ProgressBar';
@@ -37,11 +37,13 @@ export function LoanCard({ loan, onPress }: LoanCardProps) {
             {loan.paymentType === 'daily' ? 'Daily' : 'Lump sum'} · started{' '}
             {formatFullDate(parseYmd(loan.startDate))}
           </Text>
-          <Text className="text-xl font-extrabold text-slate-900 dark:text-white">
-            {formatPeso(loan.principal)}
-          </Text>
+          <Money
+            value={loan.principal}
+            kind="borrower"
+            className="text-xl font-extrabold text-slate-900 dark:text-white"
+          />
           <Text className="text-sm text-slate-600 dark:text-slate-300">
-            Total payable {formatPeso(loan.totalPayable)}
+            Total payable <Money value={loan.totalPayable} kind="borrower" />
           </Text>
         </View>
         <View className="items-end gap-1">

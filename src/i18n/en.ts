@@ -751,6 +751,24 @@ export const en = {
     sortAtoZ: 'A–Z',
     reorderAction: 'Reorder',
   },
+  privacy: {
+    amountHidden: 'Amount hidden',
+    peekHint: 'Double tap to show for 10 seconds',
+    showAmounts: 'Show amounts',
+    hideAmounts: 'Hide amounts',
+    settingsSection: 'Privacy',
+    settingsExplain:
+      'Replaces money figures with a placeholder so people nearby can’t read them over your shoulder.',
+    enableLabel: 'Privacy mode',
+    enableHint: 'Hide money amounts throughout the app.',
+    hideBorrowerLabel: 'Also hide amounts of borrowers and loans',
+    hideBorrowerHint:
+      'Off by default, so you can still see how much to collect from each person.',
+    startLabel: 'On app start',
+    startRemember: 'Keep my last choice',
+    startAlways: 'Always start hidden',
+    sharedNotice: 'Shared reports show real amounts.',
+  },
   eod: {
     screenTitle: 'End of Day Report',
     title: 'End of Day Report',
