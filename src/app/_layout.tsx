@@ -29,7 +29,6 @@ import { todayYmd } from '@/lib/loan';
 import { useThemeColors } from '@/lib/theme';
 import { recoverInterruptedRestore } from '@/services/backup';
 import { useAppState } from '@/store/app-state';
-import { useDataGeneration } from '@/store/backup-state';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -67,8 +66,6 @@ export default function RootLayout() {
     if (fontError) console.warn('[Fonts] Poppins failed to load; using the system font', fontError);
   }, [fontError]);
   const { hasCompletedOnboarding, profile } = useAppState();
-  // A restore bumps this: the provider (and every screen under it) remounts with fresh data.
-  const dataGeneration = useDataGeneration();
   const showOnboarding = !hasCompletedOnboarding;
   const hasProfile = profile !== null;
 
@@ -88,7 +85,7 @@ export default function RootLayout() {
         <PrivacyProvider>
         <AppLockGate>
           {/* Migrations run in onInit before any screen renders, so screens can always query. */}
-          <SQLiteProvider key={dataGeneration} databaseName={DATABASE_NAME} onInit={initDatabase}>
+          <SQLiteProvider databaseName={DATABASE_NAME} onInit={initDatabase}>
             <ReconcileOnForeground />
             <Stack
               screenOptions={{

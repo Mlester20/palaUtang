@@ -152,13 +152,11 @@ export function applyWhitelistedSettings(settings: ReadonlyMap<string, string>) 
   }
 }
 
-// ───────────────────────── Operation lock + overlay + remount ─────────────────────────
+// ───────────────────────── Operation lock + overlay ─────────────────────────
 
 export type DataOperation = 'backup' | 'restore' | 'export';
 
 let busy: DataOperation | null = null;
-/** Bumped after a restore: the root layout keys SQLiteProvider on it to remount everything. */
-let generation = 0;
 const opListeners = new Set<() => void>();
 const notifyOps = () => opListeners.forEach((l) => l());
 const subscribeOps = (l: () => void) => {
@@ -188,13 +186,4 @@ export async function runDataOperation<T>(kind: DataOperation, task: () => Promi
 
 export function useDataOperation(): DataOperation | null {
   return useSyncExternalStore(subscribeOps, () => busy);
-}
-
-export function useDataGeneration(): number {
-  return useSyncExternalStore(subscribeOps, () => generation);
-}
-
-export function bumpDataGeneration() {
-  generation += 1;
-  notifyOps();
 }

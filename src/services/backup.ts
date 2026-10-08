@@ -30,7 +30,6 @@ import { todayYmd } from '@/lib/loan';
 import { completeOnboarding, getAppStateSnapshot, reloadAppState } from '@/store/app-state';
 import {
   applyWhitelistedSettings,
-  bumpDataGeneration,
   clearRestoreMarker,
   markBackupExported,
   readRestoreMarker,
@@ -267,14 +266,20 @@ async function rollbackFromSafety(live: SQLiteDatabase, safety: File) {
   await replaceLiveData(live, safety, settings);
 }
 
-/** After any restore or rollback: fresh in-memory stores and a remounted SQLiteProvider. */
+/**
+ * After any restore or rollback: fresh in-memory stores. The live SQLite connection itself
+ * stays open and valid (backupDatabaseAsync works through it by design, see the file header) —
+ * every screen already reloads its data via useFocusEffect, so there's nothing left to force.
+ * Remounting SQLiteProvider here used to be how this refreshed screens, but closing/reopening
+ * the connection while it was the active `live` handle left it unusable (every query after a
+ * restore failed with "NativeDatabase.prepareAsync" / NullPointerException) — removed.
+ */
 function refreshEverything() {
   reloadAppState();
   reloadFlagThresholds();
   reloadDocumentSettings();
   // A restored business profile means this phone doesn't need onboarding/setup again.
   if (getAppStateSnapshot().profile) completeOnboarding();
-  bumpDataGeneration();
 }
 
 /**
