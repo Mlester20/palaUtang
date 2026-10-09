@@ -8,13 +8,13 @@ import '@/global.css';
 import { Poppins_400Regular } from '@expo-google-fonts/poppins/400Regular';
 import { Poppins_600SemiBold } from '@expo-google-fonts/poppins/600SemiBold';
 import { Poppins_700Bold } from '@expo-google-fonts/poppins/700Bold';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, router, Stack, ThemeProvider } from 'expo-router';
 import { useFonts } from 'expo-font';
 import { NavigationBar } from 'expo-navigation-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { SQLiteProvider, type SQLiteDatabase } from 'expo-sqlite';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
@@ -68,6 +68,23 @@ export default function RootLayout() {
   const { hasCompletedOnboarding, profile } = useAppState();
   const showOnboarding = !hasCompletedOnboarding;
   const hasProfile = profile !== null;
+
+  // Stack.Protected reliably kicks a *live* screen out when its guard turns MORE restrictive,
+  // but opening up access (finishing onboarding, saving the profile, a restore) doesn't move
+  // the current screen on its own — confirmed on-device: the button's state write went through
+  // every time, but the screen only ever advanced after a full app restart. A plain
+  // router.replace('/') in the screen's own onPress handler wasn't enough either (it fires
+  // before this component has re-rendered with the new guard, so it resolves against the
+  // stale one). Doing it here, in an effect keyed on the guard values themselves, guarantees
+  // the navigation only runs once this render has already picked them up.
+  const skipFirst = useRef(true);
+  useEffect(() => {
+    if (skipFirst.current) {
+      skipFirst.current = false;
+      return;
+    }
+    router.replace('/');
+  }, [showOnboarding, hasProfile]);
 
   // Only one group is reachable at a time. Any blocked route (including the initial "/")
   // redirects to the first available screen, so this decides the launch flow:

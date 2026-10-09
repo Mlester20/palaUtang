@@ -36,6 +36,7 @@ export default function SetupScreen() {
     setSubmitted(true);
     if (nameError || penaltyError) return;
 
+    // The root layout watches the profile and navigates once it's saved (see src/app/_layout.tsx).
     saveProfile({
       businessName: businessName.trim(),
       currency,
@@ -43,8 +44,6 @@ export default function SetupScreen() {
       baldaPenaltyAmount: penaltyEnabled ? parsedPenalty : 0,
       settlementMode: 'full',
     });
-    // See src/app/onboarding.tsx: the guard alone won't move a screen that's already live.
-    router.replace('/');
   };
 
   return (
