@@ -36,7 +36,6 @@ export default function SetupScreen() {
     setSubmitted(true);
     if (nameError || penaltyError) return;
 
-    // Root layout guards redirect to (tabs) once the profile is saved.
     saveProfile({
       businessName: businessName.trim(),
       currency,
@@ -44,6 +43,8 @@ export default function SetupScreen() {
       baldaPenaltyAmount: penaltyEnabled ? parsedPenalty : 0,
       settlementMode: 'full',
     });
+    // See src/app/onboarding.tsx: the guard alone won't move a screen that's already live.
+    router.replace('/');
   };
 
   return (
