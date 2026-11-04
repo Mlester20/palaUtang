@@ -70,20 +70,24 @@ export default function RootLayout() {
   const hasProfile = profile !== null;
 
   // Stack.Protected reliably kicks a *live* screen out when its guard turns MORE restrictive,
-  // but opening up access (finishing onboarding, saving the profile, a restore) doesn't move
-  // the current screen on its own — confirmed on-device: the button's state write went through
-  // every time, but the screen only ever advanced after a full app restart. A plain
-  // router.replace('/') in the screen's own onPress handler wasn't enough either (it fires
-  // before this component has re-rendered with the new guard, so it resolves against the
-  // stale one). Doing it here, in an effect keyed on the guard values themselves, guarantees
-  // the navigation only runs once this render has already picked them up.
+  // but opening up access (finishing onboarding, saving the profile) doesn't move the current
+  // screen on its own — confirmed on-device: the state write goes through, but the screen only
+  // advances after a full app restart. A plain router.replace() in the screen's own handler
+  // wasn't enough either (it fires before this component re-renders with the new guard, so it
+  // resolves against the stale one). Doing it here, in an effect keyed on the guard values,
+  // guarantees navigation only runs once this render has already picked them up.
   const skipFirst = useRef(true);
   useEffect(() => {
     if (skipFirst.current) {
       skipFirst.current = false;
       return;
     }
-    router.replace('/');
+    // Onboarding finished → setup (if no profile yet), otherwise home (/).
+    if (!showOnboarding && !hasProfile) {
+      router.replace('/setup');
+    } else if (!showOnboarding && hasProfile) {
+      router.replace('/');
+    }
   }, [showOnboarding, hasProfile]);
 
   // Only one group is reachable at a time. Any blocked route (including the initial "/")
